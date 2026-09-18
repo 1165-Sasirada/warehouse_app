@@ -1,0 +1,12 @@
+cat > .gitignore << 'EOF'
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Node (for when Phase 3 frontend starts)
+node_modules/
+.next/
+EOF
