@@ -2,7 +2,7 @@
 
 import heapq
 from typing import List, Tuple, Dict, Optional
-from warehouse import WarehouseGrid
+from core.warehouse import WarehouseGrid
 
 # Manhattan Distance Hueristic for Grid Movement: |x1 - x2| + |y1 - y2|
 def heuristic(a: Tuple[int, int], b: Tuple[int, int]) -> int:

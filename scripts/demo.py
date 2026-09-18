@@ -1,5 +1,8 @@
-from warehouse import WarehouseGrid
-from pathfinder import calculate_optimal_route
+import sys, os
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+from core.warehouse import WarehouseGrid
+from core.pathfinder import calculate_optimal_route
 
 if __name__ == "__main__":
 	warehouse = WarehouseGrid()
