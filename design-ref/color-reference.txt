@@ -1,0 +1,38 @@
+WAREHOUSE APP — COLOR REFERENCE
+(compiled from design notes; update this file whenever a color changes)
+
+--- Core palette ---
+Page/website background:                  #f2e9e4
+
+Dark surface (login left panel,
+sidebar bg, button bg, table outline):     #231942
+Text on dark surface (#231942):            #e0b1cb
+Dark surface hover state:                  #9f86c0 (lowered opacity)
+
+--- Logo mark ---
+Logo path/stroke:                          #f5ebfa
+Logo circles:                              #c085e0, #d5adeb, #ead6f5
+
+--- Warehouse map ---
+Packing station fill:                      #5e548e
+Warehouse cell (storage) outline:          #9f86c0
+Warehouse cell (storage) fill, normal:     #f5ebfa
+Target cell glow (during active pick):     #ffd166
+
+Hotness scale, lightest → darkest:
+  1. #ff9b54
+  2. #ff7f51
+  3. #ce4257
+  4. #720026
+  5. #4f000b
+
+Pickup path line, repeating gradient:
+  #dbc2cf, #9fa2b2, #3c7a89, #2e4756, #16262e
+
+--- History page ---
+Row background, alternating per order:     #5e548e, #9f86c0 (both lowered opacity)
+
+--- Not yet respecified (carried over from earlier draft — confirm/update) ---
+Text on light backgrounds (headings,
+labels, distance info, etc.):              #22223b  [OLD — not covered by latest update]
+Pending-order count badge:                 #ce4257  [OLD — not covered by latest update]

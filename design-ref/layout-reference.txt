@@ -1,0 +1,50 @@
+WAREHOUSE APP — PAGE LAYOUT REFERENCE
+(structure only — see color-reference.txt for hex values)
+
+Login page
+* Screen split in half: left panel (dark surface + logo mark), right panel
+  (page background + login form)
+* Top-left corner, overlaid across the whole screen: title text
+  "Warehouse Shortest Path Simulator"
+* Right panel contains: email field, password field, error message area,
+  submit button
+
+Dashboard / Warehouse Map page
+* Must fit in one page — no scrolling
+* Left: collapsible sidebar, icon-only by default, expands to 1/4 of
+  screen width on click, contains nav links (Dashboard, Stock, History)
+  and a logout button
+* Top bar: pending-order count (circle badge) + "Accept Order" button,
+  both right-aligned; order notification banner centered
+* Order notification banner shows:
+  - current order number
+  - current item's location label + name
+  - checkbox to mark the item as picked
+  - progress bar showing items picked so far
+  - fraction indicator (e.g. "1/4") next to the progress bar
+  - advances to the next item on check, then the next order once all
+    items in the current order are picked
+* Below the top bar: warehouse map, filling most of the remaining space
+  - packing station square, labeled above it
+  - storage cells as rounded squares
+  - pathway line drawn only while actively fulfilling an order — traces
+    from packing station to each item in visiting order
+  - the item currently being picked glows until its checkbox is ticked
+  - hotness overlay (toggleable) recolors cells by pick frequency
+* Below the map: distance info bar — naive distance, optimized distance,
+  percent saved
+
+Stock page
+* Table of all inventory: SKU name, location label (e.g. A-15-3-2-B),
+  quantity
+* Filterable/searchable (1,800 locations)
+* "Restock All" button — bulk-resets quantities for the demo
+
+History page
+* Table of completed orders, each row showing:
+  - order number
+  - timestamp (created/completed)
+  - employee who handled it
+  - naive distance / optimized distance / percent saved
+* Rows belonging to the same order share a background color, alternating
+  per order group
