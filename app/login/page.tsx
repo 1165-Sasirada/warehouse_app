@@ -20,7 +20,7 @@ export default function LoginPage() {
 
     setLoading(false)
     if (error) {
-      setError(error.message)
+      setError(getLoginErrorMessage(error.message))
       return
     }
     router.push('/dashboard')
@@ -88,6 +88,20 @@ export default function LoginPage() {
       </div>
     </div>
   )
+}
+
+function getLoginErrorMessage(message: string) {
+  const normalized = message.toLowerCase()
+  if (normalized.includes('email not confirmed')) {
+    return 'Email ยังไม่ได้ยืนยัน กรุณาเปิดอีเมลยืนยัน หรือกด Confirm user ใน Supabase Authentication > Users'
+  }
+  if (normalized.includes('invalid login credentials')) {
+    return 'Email หรือรหัสผ่านไม่ถูกต้อง ตรวจสอบบัญชีใน Supabase Authentication > Users'
+  }
+  if (normalized.includes('failed to fetch') || normalized.includes('network')) {
+    return 'เชื่อมต่อ Supabase ไม่ได้ ตรวจสอบ .env.local และ restart npm run dev'
+  }
+  return `เข้าสู่ระบบไม่สำเร็จ: ${message}`
 }
 
 // Enlarged route/path logo mark (was 140px, now 220px)

@@ -1,20 +1,44 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: MapIcon },
+  { href: '/create-order', label: 'Create Order', icon: PlusBoxIcon },
   { href: '/stock', label: 'Stock', icon: BoxIcon },
   { href: '/history', label: 'History', icon: ClockIcon },
 ]
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
+  const [role, setRole] = useState<string | null>(null)
   const pathname = usePathname()
   const router = useRouter()
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadRole() {
+      const { data: authData } = await supabase.auth.getUser()
+      if (!authData.user) return
+
+      const { data } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', authData.user.id)
+        .single()
+
+      if (mounted) setRole(data?.role ?? null)
+    }
+
+    void loadRole()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -37,7 +61,9 @@ export default function Sidebar() {
         </button>
 
         <ul className="mt-4 space-y-1">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          {NAV_ITEMS
+            .filter(({ href }) => href !== '/create-order' || role === 'manager')
+            .map(({ href, label, icon: Icon }) => {
             const active = pathname === href
             return (
               <li key={href}>
@@ -94,6 +120,16 @@ function BoxIcon() {
       <path d="M3 6l7-3 7 3-7 3-7-3z" strokeLinejoin="round" />
       <path d="M3 6v8l7 3 7-3V6" strokeLinejoin="round" />
       <path d="M10 9v8" />
+    </svg>
+  )
+}
+
+function PlusBoxIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M3 6l7-3 7 3-7 3-7-3z" strokeLinejoin="round" />
+      <path d="M3 6v8l7 3 7-3V6" strokeLinejoin="round" />
+      <path d="M10 11v5M7.5 13.5h5" strokeLinecap="round" />
     </svg>
   )
 }

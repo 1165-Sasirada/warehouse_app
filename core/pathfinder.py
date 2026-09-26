@@ -81,7 +81,8 @@ def calculate_optimal_route(warehouse: WarehouseGrid, item_pick_coords: List[Dic
 			'item_name': nearest_item['name'],
 			'location_label': nearest_item['label'],
 			'pick_coord': nearest_item['pick_coord'],
-			'segment_distance': shortest_dist
+			'segment_distance': shortest_dist,
+			'path': best_path
 		})
 		unvisited.remove(nearest_item)
 

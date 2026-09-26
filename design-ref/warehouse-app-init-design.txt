@@ -1,0 +1,58 @@
+warehouse-app initial design
+
+- logo: JetBrains Mono (SemiBold 600)
+- title: JetBrains Mono (Medium 500)
+- body: Karla (Light 300)
+- body (thai): Bai Jamjuree (Light 300)
+- background color #f2e9e4
+
+Login page
+
+- screen split in half; left side #22223b with a box emoji?? or a logo??, right side #f2e9e4 with login fields
+- top-left corner of the screen: text "Warehouse Shortest Path Simulator"
+
+Dashboard/Warehouse Map page
+
+- detail below should fit into one page, no scrolling;
+- left side of the screen will be navigation bar (top to bottom #22223b), click icon to pull out 1/4 of the width -> menus for changing pages
+- top-right corner will be a "Accept Order" button, left of that will be a number in a circle indicating how many orders are pending
+- order number along with order's first item's location and name will appear at the top-middle of the screen like notification banner with a checkbox (to be tick when worker has picked up that item) once checkbox has been ticked, the next item in that order will appear until all items has been picked up, then it will move on to the next order in queue.
+- in the item notification banner, below the item info, will be a loading bar indicating how many items in this order has been picked up. and right of that loading bar will be faction like 1/4 meaning one item has been picked up out of four.
+- top container block will be warehouse map (below the "Accept Order" button and item notification bar).
+- #4a4e69 square representing packing station with text above "Packing Station"
+- rounded corner square representing the top view of the warehouse storage (normal state -> fill: #ffe5d9, stroke: #a78a7f)
+- for item hotness indication (you can suggest the hotness level threshold) use the following colors to fill the entire square, starting from lightest to darkess:
+	- #ff9b54
+	- #ff7f51
+	- #ce4257
+	- #720026
+	- #4f000b
+- pathway should be blank unless it is time to fulfill orders, in which case a line (thickness determined later) will be drawn from packing station to pickup each item. pathway colors will be a gradient of these colors (repeating pattern): #dbc2cf, #9fa2b2, #3c7a89, #2e4756, #16262e
+- when fulfilling an order, the targeted item's storage will glow #ffd166 until the item's checkbox in the notification banner has been ticked.
+- below the warehouse map should be the information like naive vs. optimized distance, shown as a number or percentage once a route is calculated
+
+Stock page
+
+- Table of all inventory: SKU name, location label (e.g. A-15-3-2-B), quantity — ideally filterable/searchable given there are 1,800 locations
+- "Restock All" button — bulk-resets quantities for the demo
+- #22223b for table outline
+
+History Page
+
+- Table of completed orders, each row showing: Order number
+- Timestamp (created/completed)
+- Employee who handled it
+- Naive distance / optimized distance / distance saved (%)
+- #22223b for table outline
+- same order should be the same background color alternating between #5e548e, #9f86c0 (both with lowered opacity)
+
+*** layouts, colors, and fonts may need to be change later
+*** colours have changed to:
+- login's left, sidebar bg, button bg, tables' outline: #231942
+- text on top of #231942: #e0b1cb
+- #231942's hover bg: #9f86c0 (with lowered opacity still)
+- logo's path: #f5ebfa
+- logo's circles: #c085e0, #d5adeb, #ead6f5
+- packing station: #5e548e
+- warehouse cell's outline: #9f86c0
+- warehouse cell's filled normal: #f5ebfa 
