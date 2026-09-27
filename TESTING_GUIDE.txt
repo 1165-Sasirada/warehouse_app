@@ -1,0 +1,310 @@
+WAREHOUSE APP - TESTING GUIDE
+=============================
+
+This document explains how to set up and test the system from start to finish.
+
+1. Set Up Supabase
+------------------
+Open Supabase Dashboard > SQL Editor and run these files in order:
+
+1) supabase/schema.sql
+2) supabase/rls.sql
+3) supabase/grants.sql
+
+Do not run schema.sql again if the schema has already been created.
+
+2. Configure Environment Variables
+----------------------------------
+The .env file must contain:
+
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=your-secret-key
+SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+
+The .env.local file must contain:
+
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+
+Get these values from Supabase Dashboard > Project Settings > API.
+Never use SUPABASE_SECRET_KEY in the frontend or put it in .env.local.
+
+3. Install the Python Environment
+---------------------------------
+Open PowerShell at the project root:
+
+cd D:\CS\Year3\Project\warehouse_app
+
+If the virtual environment does not exist:
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+If PowerShell blocks activation:
+
+Set-ExecutionPolicy -Scope Process Bypass
+.\.venv\Scripts\Activate.ps1
+
+4. Seed Warehouse Data
+----------------------
+Run from the project root:
+
+python scripts/seed.py
+
+Expected data:
+
+- 1,800 locations
+- 50 SKUs
+- 4 demo stock records
+
+Seeded demo stock:
+
+Phone Charger #2       -> A-15-3-2-B
+Wireless Mouse #1      -> A-2-5-1-A
+USB Cable #3           -> A-8-10-3-C
+Mechanical Keyboard #4 -> A-11-1-1-A
+
+The seed script uses upsert, so it can be run repeatedly.
+
+5. Create Users in Supabase Auth
+--------------------------------
+Go to:
+
+Supabase Dashboard > Authentication > Users > Add user
+
+Create an account, for example:
+
+Email: tester@example.com
+Password: Test123456!
+
+Enable Auto Confirm User if available. Otherwise, confirm the user after creation.
+
+
+6. Add Users to public.users
+----------------------------
+Copy the User UID from Authentication > Users and run this SQL in Supabase:
+
+insert into public.users (id, email, full_name, role)
+values (
+  'PUT-USER-UID-HERE',
+  'tester@example.com',
+  'Test Picker',
+  '[picker]'
+);
+
+
+7. Run the Frontend
+-------------------
+From the project root:
+
+npm install
+npm run dev
+
+Open:
+
+http://localhost:3000/login
+
+If .env.local changes, restart the server:
+
+Ctrl+C
+npm run dev
+
+The Dashboard calls the Python A* endpoint at /api/path. For local testing of the Vercel
+Python function, use the Vercel development runtime (vercel dev) or test after deployment.
+Running only next dev does not execute root-level Vercel Python functions.
+
+8. Create an Order
+------------------
+Log in with a created user and open:
+
+http://localhost:3000/create-order
+
+On the Create Order page:
+
+1) Select a SKU.
+2) The location is selected automatically from stock.
+3) Enter a quantity.
+4) Click + Add item to add another item.
+5) Click Create pending order.
+
+The user does not enter:
+
+- order number
+- location
+
+The system generates the order number automatically:
+
+ORD-YYYYMMDD-HHMMSS
+
+Example:
+
+ORD-20260923-143025
+
+Verify in Supabase:
+
+orders:
+- status = PENDING
+- order_number starts with ORD-
+
+order_items:
+- order_id
+- sku_id
+- location_id
+- quantity
+- pick_sequence
+- picked_status = false
+
+9. Accept an Order on the Dashboard
+------------------------------------
+Open:
+
+http://localhost:3000/dashboard
+
+The dashboard loads PENDING orders from Supabase and shows their count in the badge.
+
+Click Accept Order:
+
+PENDING -> PICKING
+
+The dashboard loads:
+
+- real order_items
+- real SKU data
+- real location data
+- pick coordinates from locations
+
+10. Test Picking Items
+----------------------
+1) View the route on the warehouse map.
+2) Follow the path to the rack.
+3) Check the current item checkbox.
+4) The system updates order_items.picked_status = true.
+5) The picked rack changes to pink.
+6) The completed route remains visible.
+7) The next item is displayed.
+
+When all items are picked:
+
+PICKING -> COMPLETED
+
+The system records:
+
+- completed_at
+- naive_distance
+- optimized_distance
+- distance_saved
+
+11. Check History
+-----------------
+Open:
+
+http://localhost:3000/history
+
+History shows only orders where status = COMPLETED.
+
+Displayed data:
+
+- Order number
+- Created
+- Completed
+- Employee
+- Naive distance
+- Optimized distance
+- Saved percentage
+
+12. Verify with Supabase Table Editor
+-------------------------------------
+Check the orders table:
+
+- PENDING before Accept Order
+- PICKING after Accept Order
+- COMPLETED after all items are picked
+
+Check the order_items table:
+
+- picked_status = false before picking
+- picked_status = true after checking an item
+
+13. Validation Commands
+-----------------------
+Frontend:
+
+npm run lint
+npm run build
+
+Python:
+
+python -m py_compile scripts/seed.py core/warehouse.py core/pathfinder.py
+python -m py_compile api/path.py
+python scripts/demo.py
+
+14. Common Problems
+-------------------
+Cannot log in:
+
+- Check that the user exists in Authentication > Users.
+- Confirm the user.
+- Check the email and password.
+- Check .env.local.
+- Restart npm run dev after changing environment variables.
+
+Demo data is incomplete:
+
+- Run python scripts/seed.py.
+- Check that locations contain data.
+- Check that skus contain data.
+- Check that stock contains the 4 demo stock records.
+
+Duplicate key for locations:
+
+- seed.py uses upsert.
+- Run python scripts/seed.py again.
+
+pick_sequence error:
+
+- order_items.pick_sequence is NOT NULL.
+- Every item must receive a sequence: 1, 2, 3, ...
+
+No order appears on the Dashboard:
+
+- Create an order from /create-order first.
+- Check that orders.status = PENDING.
+- Refresh the Dashboard.
+
+15. System Flow
+---------------
+Create Order:
+
+Select SKU + quantity
+        |
+        v
+Create orders = PENDING
+        |
+        v
+Click Accept Order
+        |
+        v
+orders = PICKING
+        |
+        v
+Check each picked item
+        |
+        v
+Pick all items
+        |
+        v
+orders = COMPLETED
+        |
+        v
+Display in History
+
+16. Recommended Future Improvements
+------------------------------------
+- Resume PICKING orders after a page refresh.
+- Decrease stock when an item is picked.
+- Update location_heatmaps.
+- Prevent multiple pickers from accepting the same order.
+- Move order acceptance to a server-side API.
+- Add realtime updates.
+- Add automated tests.

@@ -30,7 +30,7 @@ from core.warehouse import WarehouseGrid  # noqa: E402
 
 load_dotenv()
 
-SUPABASE_URL = os.environ["NEXT_PUBLIC_SUPABASE_URL"]
+SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SECRET_KEY = os.environ["SUPABASE_SECRET_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
@@ -82,11 +82,42 @@ def build_skus(n=50):
     return rows
 
 
-def chunked_insert(table_name: str, rows: list, chunk_size: int = 500):
+def chunked_upsert(table_name: str, rows: list, conflict_column: str, chunk_size: int = 500):
     for i in range(0, len(rows), chunk_size):
         chunk = rows[i:i + chunk_size]
-        supabase.table(table_name).insert(chunk).execute()
-        print(f"  inserted {i + len(chunk)}/{len(rows)} into {table_name}")
+        supabase.table(table_name).upsert(chunk, on_conflict=conflict_column).execute()
+        print(f"  upserted {i + len(chunk)}/{len(rows)} into {table_name}")
+
+
+def ensure_demo_stock():
+    demo_stock = [
+        ("Phone Charger #2", "A-15-3-2-B"),
+        ("Wireless Mouse #1", "A-2-5-1-A"),
+        ("USB Cable #3", "A-8-10-3-C"),
+        ("Mechanical Keyboard #4", "A-11-1-1-A"),
+    ]
+
+    for sku_name, location_label in demo_stock:
+        sku_result = supabase.table("skus").select("id").eq("name", sku_name).single().execute()
+        location_result = supabase.table("locations").select("id").eq("label", location_label).single().execute()
+        if not sku_result.data or not location_result.data:
+            print(f"  skipped stock for {sku_name}: missing SKU or location")
+            continue
+
+        existing = supabase.table("stock").select("id").eq(
+            "sku_id", sku_result.data["id"]
+        ).eq("location_id", location_result.data["id"]).limit(1).execute()
+
+        if existing.data:
+            supabase.table("stock").update({"quantity": 100}).eq("id", existing.data[0]["id"]).execute()
+        else:
+            supabase.table("stock").insert({
+                "sku_id": sku_result.data["id"],
+                "location_id": location_result.data["id"],
+                "quantity": 100,
+            }).execute()
+
+        print(f"  ensured stock: {sku_name} at {location_label}")
 
 
 if __name__ == "__main__":
@@ -102,11 +133,14 @@ if __name__ == "__main__":
     print(f"Building locations for {len(list(aisles))} aisle(s){' (TEST MODE)' if args.test else ''}...")
     locations = build_locations(aisles)
     print(f"Generated {len(locations)} locations. Inserting...")
-    chunked_insert("locations", locations)
+    chunked_upsert("locations", locations, "label")
 
     print("\nBuilding SKUs...")
     skus = build_skus(50)
     print(f"Generated {len(skus)} SKUs. Inserting...")
-    chunked_insert("skus", skus)
+    chunked_upsert("skus", skus, "barcode")
+
+    print("\nEnsuring demo stock...")
+    ensure_demo_stock()
 
     print("\nDone seeding.")

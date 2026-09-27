@@ -29,6 +29,9 @@ Hotness scale, lightest → darkest:
 Pickup path line, repeating gradient:
   #dbc2cf, #9fa2b2, #3c7a89, #2e4756, #16262e
 
+  -ig story gradient-
+  #F58529, #FEDA77, #DD2A7B, #8134AF, #515BD4
+
 --- History page ---
 Row background, alternating per order:     #5e548e, #9f86c0 (both lowered opacity)
 

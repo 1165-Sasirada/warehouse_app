@@ -5,8 +5,8 @@ import {
   COLS,
   getCellType,
   getHeatColor,
-  PATH_COLORS,
 } from '@/lib/warehouseGrid'
+import WarehouseRoute from '@/components/WarehouseRoute'
 
 const CELL = 25
 const GAP = 5
@@ -20,15 +20,23 @@ interface WarehouseMapProps {
   showHeatmap?: boolean
   // Optional: the current pick route, in visiting order, for drawing the path
   activePath?: Point[]
+  completedPath?: Point[]
   // Optional: the item currently being picked, to apply the glow highlight
   targetCell?: Point
+  completedTargets?: Point[]
+  animateRoute?: boolean
+  routeSpeed?: number
 }
 
 export default function WarehouseMap({
   heatmap = {},
   showHeatmap = false,
   activePath = [],
+  completedPath = [],
   targetCell,
+  completedTargets = [],
+  animateRoute = true,
+  routeSpeed = 1,
 }: WarehouseMapProps) {
   const width = COLS * STEP
   const height = ROWS * STEP
@@ -43,6 +51,7 @@ export default function WarehouseMap({
       const x = col * STEP
       const y = row * STEP
       const isTarget = targetCell && targetCell.row === row && targetCell.col === col
+      const isCompleted = completedTargets.some((point) => point.row === row && point.col === col)
 
       if (type === 'packing_station') {
         cells.push(
@@ -75,31 +84,13 @@ export default function WarehouseMap({
           width={CELL}
           height={CELL}
           rx={4}
-          fill={isTarget ? '#ffd166' : heatColor ?? '#f5ebfa'}
-          stroke="#9f86c0"
-          strokeWidth={1.3}
-          style={isTarget ? { filter: 'drop-shadow(0 0 4px #ffd166)' } : undefined}
+          fill={isTarget ? '#ffd166' : isCompleted ? '#e0b1cb' : heatColor ?? '#f5ebfa'}
+          stroke={isTarget ? '#ffd166' : isCompleted ? '#e0b1cb' : '#9f86c0'}
+          strokeWidth={isTarget || isCompleted ? 2 : 1.3}
+          style={isTarget ? { filter: 'url(#target-rack-glow)' } : undefined}
         />
       )
     }
-  }
-
-  // Path line through the visiting order, colored with the repeating gradient
-  let pathEl: React.ReactElement | null = null
-  if (activePath.length > 1) {
-    const points = activePath
-      .map((p) => `${p.col * STEP + CELL / 2},${p.row * STEP + CELL / 2}`)
-      .join(' ')
-    pathEl = (
-      <polyline
-        points={points}
-        fill="none"
-        stroke={PATH_COLORS[activePath.length % PATH_COLORS.length]}
-        strokeWidth={2}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    )
   }
 
   return (
@@ -108,8 +99,24 @@ export default function WarehouseMap({
       className="h-full w-full"
       preserveAspectRatio="xMidYMid meet"
     >
+      <defs>
+        <filter id="target-rack-glow" x="-100%" y="-100%" width="300%" height="300%">
+          <feFlood floodColor="#ffd166" floodOpacity="1" result="glowColor" />
+          <feComposite in="glowColor" in2="SourceGraphic" operator="in" result="glowShape" />
+          <feGaussianBlur in="glowShape" stdDeviation="7" result="blurredGlow" />
+          <feMerge>
+            <feMergeNode in="blurredGlow" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
       {cells}
-      {pathEl}
+      <WarehouseRoute
+        path={activePath}
+        completedPath={completedPath}
+        animate={animateRoute}
+        speed={routeSpeed}
+      />
     </svg>
   )
 }

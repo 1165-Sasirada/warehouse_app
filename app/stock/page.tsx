@@ -21,12 +21,7 @@ export default function StockPage() {
   const [loading, setLoading] = useState(true)
   const [restocking, setRestocking] = useState(false)
 
-  useEffect(() => {
-    fetchStock()
-  }, [])
-
   async function fetchStock() {
-    setLoading(true)
     const { data, error } = await supabase
       .from('stock')
       .select('id, quantity, sku:skus(name), location:locations(label)')
@@ -37,6 +32,11 @@ export default function StockPage() {
     }
     setLoading(false)
   }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchStock(), 0)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   async function handleRestockAll() {
     setRestocking(true)

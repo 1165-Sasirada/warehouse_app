@@ -21,12 +21,7 @@ export default function HistoryPage() {
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchHistory()
-  }, [])
-
   async function fetchHistory() {
-    setLoading(true)
     const { data, error } = await supabase
       .from('orders')
       .select(
@@ -40,6 +35,11 @@ export default function HistoryPage() {
     }
     setLoading(false)
   }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchHistory(), 0)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   function formatTimestamp(iso: string | null) {
     if (!iso) return '—'

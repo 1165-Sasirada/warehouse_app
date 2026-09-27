@@ -15,6 +15,8 @@ export const BOTTOM_BLOCK_ROWS = { start: 13, end: 22 } // aisles 11-20
 
 export type CellType = 'packing_station' | 'rack' | 'walkway'
 
+export type GridPoint = { row: number; col: number }
+
 export function getCellType(row: number, col: number): CellType {
   if (row === PACKING_STATION.row && col === PACKING_STATION.col) {
     return 'packing_station'
@@ -25,6 +27,43 @@ export function getCellType(row: number, col: number): CellType {
     return 'rack'
   }
   return 'walkway'
+}
+
+export function findWalkablePath(start: GridPoint, goal: GridPoint): GridPoint[] {
+  const startKey = `${start.row}-${start.col}`
+  const queue: GridPoint[] = [start]
+  const cameFrom = new Map<string, GridPoint | null>([[startKey, null]])
+  const directions = [
+    { row: -1, col: 0 },
+    { row: 1, col: 0 },
+    { row: 0, col: -1 },
+    { row: 0, col: 1 },
+  ]
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    if (current.row === goal.row && current.col === goal.col) break
+
+    for (const direction of directions) {
+      const next = { row: current.row + direction.row, col: current.col + direction.col }
+      const nextKey = `${next.row}-${next.col}`
+      if (next.row < 0 || next.row >= ROWS || next.col < 0 || next.col >= COLS) continue
+      if (getCellType(next.row, next.col) === 'rack' || cameFrom.has(nextKey)) continue
+      cameFrom.set(nextKey, current)
+      queue.push(next)
+    }
+  }
+
+  const goalKey = `${goal.row}-${goal.col}`
+  if (!cameFrom.has(goalKey)) return []
+
+  const path: GridPoint[] = []
+  let current: GridPoint | null = goal
+  while (current) {
+    path.push(current)
+    current = cameFrom.get(`${current.row}-${current.col}`) ?? null
+  }
+  return path.reverse()
 }
 
 // Suggested hotness buckets: 5 levels, scaled relative to the busiest
@@ -40,4 +79,4 @@ export function getHeatColor(pickCount: number, maxPickCount: number): string | 
 }
 
 // Repeating gradient for drawn pick paths
-export const PATH_COLORS = ['#dbc2cf', '#9fa2b2', '#3c7a89', '#2e4756', '#16262e']
+export const PATH_COLORS = ['#F58529', '#FEDA77', '#DD2A7B', '#8134AF', '#515BD4']
