@@ -16,14 +16,28 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
-    setLoading(false)
-    if (error) {
-      setError(getLoginErrorMessage(error.message))
+    if (signInError) {
+      setLoading(false)
+      setError(getLoginErrorMessage(signInError.message))
       return
     }
-    router.push('/dashboard')
+
+    // Route by role: customers land on Create Order, staff land on
+    // the Dashboard. If no profile row exists yet (public.users),
+    // default to Dashboard rather than blocking login entirely.
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', signInData.user.id)
+      .single()
+
+    setLoading(false)
+    router.push(profile?.role === 'customer' ? '/create-order' : '/dashboard')
   }
 
   return (

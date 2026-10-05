@@ -5,16 +5,19 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: MapIcon },
-  { href: '/create-order', label: 'Create Order', icon: PlusBoxIcon },
-  { href: '/stock', label: 'Stock', icon: BoxIcon },
-  { href: '/history', label: 'History', icon: ClockIcon },
+type Role = 'picker' | 'manager' | 'customer'
+
+const NAV_ITEMS: { href: string; label: string; icon: () => React.ReactElement; roles: Role[] }[] = [
+  { href: '/dashboard', label: 'Dashboard', icon: MapIcon, roles: ['picker', 'manager'] },
+  { href: '/create-order', label: 'Create Order', icon: PlusBoxIcon, roles: ['manager', 'customer'] },
+  { href: '/orders', label: 'Order Status', icon: ReceiptIcon, roles: ['customer'] },
+  { href: '/stock', label: 'Stock', icon: BoxIcon, roles: ['picker', 'manager'] },
+  { href: '/history', label: 'History', icon: ClockIcon, roles: ['picker', 'manager'] },
 ]
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
-  const [role, setRole] = useState<string | null>(null)
+  const [role, setRole] = useState<Role | null>(null)
   const pathname = usePathname()
   const router = useRouter()
 
@@ -31,7 +34,7 @@ export default function Sidebar() {
         .eq('id', authData.user.id)
         .single()
 
-      if (mounted) setRole(data?.role ?? null)
+      if (mounted) setRole((data?.role as Role) ?? null)
     }
 
     void loadRole()
@@ -44,6 +47,8 @@ export default function Sidebar() {
     await supabase.auth.signOut()
     router.push('/login')
   }
+
+  const visibleItems = NAV_ITEMS.filter(({ roles }) => role && roles.includes(role))
 
   return (
     <nav
@@ -61,9 +66,7 @@ export default function Sidebar() {
         </button>
 
         <ul className="mt-4 space-y-1">
-          {NAV_ITEMS
-            .filter(({ href }) => href !== '/create-order' || role === 'manager')
-            .map(({ href, label, icon: Icon }) => {
+          {visibleItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href
             return (
               <li key={href}>
@@ -86,7 +89,7 @@ export default function Sidebar() {
 
       <button
         onClick={handleLogout}
-        className="flex items-center gap-3 px-5 py-4 font-[var(--font-body)] text-sm text-[#e0b1cb]/70 hover:bg-[#be95c4]/10 hover:text-[#e0b1cb]"
+        className="flex items-center gap-3 px-5 py-4 font-[var(--font-body)] text-sm text-[#e0b1cb]/70 hover:bg-[#9f86c0]/10 hover:text-[#e0b1cb]"
       >
         <LogoutIcon />
         {open && <span>Log out</span>}
@@ -139,6 +142,17 @@ function ClockIcon() {
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
       <circle cx="10" cy="10" r="7" />
       <path d="M10 6v4l3 2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+// Distinct from ClockIcon (History) — a simple receipt/list glyph for
+// the customer-facing Order Status page.
+function ReceiptIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M5 3h10v14l-2-1.3L11 17l-2-1.3L7 17l-2-1.3V3z" strokeLinejoin="round" />
+      <path d="M7.5 7h5M7.5 10h5" strokeLinecap="round" />
     </svg>
   )
 }

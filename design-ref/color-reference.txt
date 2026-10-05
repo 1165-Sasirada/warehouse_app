@@ -26,10 +26,10 @@ Hotness scale, lightest → darkest:
   4. #720026
   5. #4f000b
 
-Pickup path line, repeating gradient:
+Pickup path line, repeating gradient (old):
   #dbc2cf, #9fa2b2, #3c7a89, #2e4756, #16262e
 
-  -ig story gradient-
+  -ig story gradient (new)-
   #F58529, #FEDA77, #DD2A7B, #8134AF, #515BD4
 
 --- History page ---
@@ -38,4 +38,4 @@ Row background, alternating per order:     #5e548e, #9f86c0 (both lowered opacit
 --- Not yet respecified (carried over from earlier draft — confirm/update) ---
 Text on light backgrounds (headings,
 labels, distance info, etc.):              #22223b  [OLD — not covered by latest update]
-Pending-order count badge:                 #ce4257  [OLD — not covered by latest update]
+Pending-order count badge:                 #ce4257

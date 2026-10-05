@@ -13,6 +13,9 @@ interface PendingOrder {
 
 interface PickItem {
   id: string
+  skuId: string
+  locationId: string
+  quantity: number
   name: string
   location: string
   rack: { row: number; col: number }
@@ -37,6 +40,8 @@ export default function DashboardPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([])
+  const [showHeatmap, setShowHeatmap] = useState(false)
+  const [heatmapData, setHeatmapData] = useState<Record<string, number>>({})
   const activeItem = orderAccepted ? items[pickedCount] : undefined
   const activePath = routeSegments[pickedCount] ?? []
   const isComplete = orderAccepted && items.length > 0 && pickedCount >= items.length
@@ -55,8 +60,29 @@ export default function DashboardPage() {
     setPendingOrders(data ?? [])
   }
 
+  // Pulls pick_count per location and re-keys it by grid coordinate
+  // ("row-col"), which is what WarehouseMap expects for its heatmap
+  // prop. Re-run this after every pick so the overlay stays live.
+  async function fetchHeatmap() {
+    const { data, error: heatError } = await supabase
+      .from('location_heatmaps')
+      .select('pick_count, location:locations(grid_y, grid_x)')
+
+    if (heatError) return
+
+    const map: Record<string, number> = {}
+    for (const row of data ?? []) {
+      const loc = Array.isArray(row.location) ? row.location[0] : row.location
+      if (loc) map[`${loc.grid_y}-${loc.grid_x}`] = row.pick_count
+    }
+    setHeatmapData(map)
+  }
+
   useEffect(() => {
-    const timer = window.setTimeout(() => void loadPendingOrders(), 0)
+    const timer = window.setTimeout(() => {
+      void loadPendingOrders()
+      void fetchHeatmap()
+    }, 0)
     return () => window.clearTimeout(timer)
   }, [])
 
@@ -80,7 +106,9 @@ export default function DashboardPage() {
 
     const { data: orderItems, error: itemsError } = await supabase
       .from('order_items')
-      .select('id, pick_sequence, picked_status, sku:skus(name), location:locations(label, grid_x, grid_y, pick_x, pick_y)')
+      .select(
+        'id, sku_id, location_id, quantity, pick_sequence, picked_status, sku:skus(name), location:locations(label, grid_x, grid_y, pick_x, pick_y)'
+      )
       .eq('order_id', pendingOrder.id)
       .order('pick_sequence', { ascending: true })
 
@@ -90,11 +118,14 @@ export default function DashboardPage() {
       return
     }
 
-    const mappedItems = orderItems.map((item) => {
+    const mappedItems: PickItem[] = orderItems.map((item) => {
       const sku = Array.isArray(item.sku) ? item.sku[0] : item.sku
       const location = Array.isArray(item.location) ? item.location[0] : item.location
       return {
         id: item.id,
+        skuId: item.sku_id,
+        locationId: item.location_id,
+        quantity: item.quantity,
         name: sku?.name ?? 'Unknown SKU',
         location: location?.label ?? 'Unknown location',
         rack: { row: location?.grid_y ?? 0, col: location?.grid_x ?? 0 },
@@ -121,13 +152,14 @@ export default function DashboardPage() {
       return
     }
 
-    const optimizedItems: PickItem[] = routeResult.pick_steps.map((step: {
-      location_label: string
-      path: [number, number][]
-    }) => mappedItems.find((item) => item.location === step.location_label)).filter(Boolean)
-    const optimizedSegments: Point[][] = routeResult.pick_steps.map((step: { path: [number, number][] }) => (
-      step.path.map(([row, col]) => ({ row, col }))
-    ))
+    const optimizedItems: PickItem[] = routeResult.pick_steps
+      .map((step: { location_label: string }) =>
+        mappedItems.find((item) => item.location === step.location_label)
+      )
+      .filter(Boolean)
+    const optimizedSegments: Point[][] = routeResult.pick_steps.map(
+      (step: { path: [number, number][] }) => step.path.map(([row, col]) => ({ row, col }))
+    )
 
     const { error: orderError } = await supabase
       .from('orders')
@@ -171,7 +203,47 @@ export default function DashboardPage() {
       return
     }
 
-    setCompletedPath((path) => [...path, ...activePath.filter((point, index) => path.length === 0 || index > 0)])
+    // Decrement stock for the picked item. Read-then-write rather than
+    // an atomic SQL decrement — fine for a classroom demo's traffic
+    // level, but not safe under concurrent pickers (see README's
+    // "still required" list for the transactional version).
+    const { data: stockRow, error: stockFetchError } = await supabase
+      .from('stock')
+      .select('id, quantity')
+      .eq('sku_id', activeItem.skuId)
+      .eq('location_id', activeItem.locationId)
+      .single()
+
+    if (!stockFetchError && stockRow) {
+      const newQuantity = Math.max(0, stockRow.quantity - activeItem.quantity)
+      await supabase
+        .from('stock')
+        .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
+        .eq('id', stockRow.id)
+    }
+
+    // Increment the pick-frequency heatmap for this location. Requires
+    // the location_heatmaps row to already exist — run
+    // supabase/patch-customer-and-heatmap.sql once to backfill it.
+    const { data: heatRow } = await supabase
+      .from('location_heatmaps')
+      .select('id, pick_count')
+      .eq('location_id', activeItem.locationId)
+      .single()
+
+    if (heatRow) {
+      await supabase
+        .from('location_heatmaps')
+        .update({ pick_count: heatRow.pick_count + 1, last_picked_at: new Date().toISOString() })
+        .eq('id', heatRow.id)
+    }
+
+    void fetchHeatmap() // refresh the overlay so a visible toggle updates live
+
+    setCompletedPath((path) => [
+      ...path,
+      ...activePath.filter((point, index) => path.length === 0 || index > 0),
+    ])
     if (activeItem) {
       setCompletedTargets((targets) => [...targets, activeItem.rack])
     }
@@ -234,10 +306,16 @@ export default function DashboardPage() {
             targetCell={activeItem?.rack}
             completedTargets={completedTargets}
             routeSpeed={walkSpeed}
+            heatmap={heatmapData}
+            showHeatmap={showHeatmap}
           />
         </div>
 
-        {error && <p role="alert" className="px-6 pb-2 text-center text-sm text-[#ce4257]">{error}</p>}
+        {error && (
+          <p role="alert" className="px-6 pb-2 text-center text-sm text-[#ce4257]">
+            {error}
+          </p>
+        )}
 
         {/* Distance info */}
         <div className="flex shrink-0 items-center justify-center gap-8 border-t border-[#4a4e69]/20 px-6 py-3 font-[var(--font-body)] text-sm text-[#22223b]">
@@ -258,14 +336,22 @@ export default function DashboardPage() {
             />
             <span className="w-8">{walkSpeed}x</span>
           </label>
+          <button
+            onClick={() => setShowHeatmap((v) => !v)}
+            className={`rounded-sm border px-3 py-1 text-xs transition-colors ${
+              showHeatmap
+                ? 'border-[#231942] bg-[#231942] text-[#e0b1cb]'
+                : 'border-[#231942]/40 text-[#231942] hover:bg-[#231942]/10'
+            }`}
+          >
+            Heatmap {showHeatmap ? 'on' : 'off'}
+          </button>
         </div>
       </div>
     </div>
   )
 }
 
-// Empty state for now — will show the active order's current item,
-// a pick checkbox, and a progress bar once order data is wired up.
 interface OrderBannerProps {
   item: PickItem | undefined
   pickedCount: number
@@ -279,22 +365,25 @@ function OrderBanner({ item, pickedCount, onPick, complete, pendingCount, totalI
   return (
     <div className="rounded-md border border-[#4a4e69]/30 bg-white/50 px-4 py-2 font-[var(--font-body)] text-sm text-[#4a4e69]">
       {!item || complete ? (
-        <p className="text-center">{complete ? 'Order complete — ready for the next order.' : pendingCount > 0 ? `${pendingCount} pending order${pendingCount === 1 ? '' : 's'} waiting.` : 'No pending orders.'}</p>
+        <p className="text-center">
+          {complete
+            ? 'Order complete — ready for the next order.'
+            : pendingCount > 0
+              ? `${pendingCount} pending order${pendingCount === 1 ? '' : 's'} waiting.`
+              : 'No pending orders.'}
+        </p>
       ) : (
         <div className="flex items-center gap-4">
           <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
-            <input
-              type="checkbox"
-              checked={false}
-              onChange={onPick}
-              className="h-4 w-4 accent-[#231942]"
-            />
+            <input type="checkbox" checked={false} onChange={onPick} className="h-4 w-4 accent-[#231942]" />
             <span className="min-w-0 text-left">
               <span className="block truncate font-medium text-[#231942]">Pick {item.name}</span>
               <span className="block text-xs text-[#4a4e69]/80">Location {item.location}</span>
             </span>
           </label>
-          <span className="shrink-0 text-xs text-[#4a4e69]">{pickedCount + 1}/{totalItems}</span>
+          <span className="shrink-0 text-xs text-[#4a4e69]">
+            {pickedCount + 1}/{totalItems}
+          </span>
         </div>
       )}
     </div>

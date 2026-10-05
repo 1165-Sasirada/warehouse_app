@@ -1,4 +1,4 @@
-warehouse-app initial design
+warehouse-app initial design (new colors in color-reference.txt)
 
 - logo: JetBrains Mono (SemiBold 600)
 - title: JetBrains Mono (Medium 500)
