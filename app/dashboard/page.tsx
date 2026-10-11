@@ -214,28 +214,49 @@ export default function DashboardPage() {
       .eq('location_id', activeItem.locationId)
       .single()
 
-    if (!stockFetchError && stockRow) {
+    if (stockFetchError) {
+      console.error('Stock lookup failed:', stockFetchError)
+      setError(`Stock lookup failed: ${stockFetchError.message}`)
+    } else if (stockRow) {
       const newQuantity = Math.max(0, stockRow.quantity - activeItem.quantity)
-      await supabase
+      const { error: stockUpdateError } = await supabase
         .from('stock')
         .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
         .eq('id', stockRow.id)
+      if (stockUpdateError) {
+        console.error('Stock update failed:', stockUpdateError)
+        setError(`Stock update failed: ${stockUpdateError.message}`)
+      }
     }
 
     // Increment the pick-frequency heatmap for this location. Requires
     // the location_heatmaps row to already exist — run
     // supabase/patch-customer-and-heatmap.sql once to backfill it.
-    const { data: heatRow } = await supabase
+    const { data: heatRow, error: heatFetchError } = await supabase
       .from('location_heatmaps')
       .select('id, pick_count')
       .eq('location_id', activeItem.locationId)
       .single()
 
-    if (heatRow) {
-      await supabase
+    if (heatFetchError) {
+      console.error('Heatmap lookup failed:', heatFetchError, 'locationId:', activeItem.locationId)
+      setError(`Heatmap lookup failed: ${heatFetchError.message}`)
+    } else if (heatRow) {
+      // .select() after update() returns the changed rows, so an RLS
+      // block that matches zero rows (which raises no error on its own)
+      // shows up as an empty array instead of passing silently.
+      const { data: updatedHeat, error: heatUpdateError } = await supabase
         .from('location_heatmaps')
         .update({ pick_count: heatRow.pick_count + 1, last_picked_at: new Date().toISOString() })
         .eq('id', heatRow.id)
+        .select()
+      if (heatUpdateError) {
+        console.error('Heatmap update failed:', heatUpdateError)
+        setError(`Heatmap update failed: ${heatUpdateError.message}`)
+      } else if (!updatedHeat || updatedHeat.length === 0) {
+        console.error('Heatmap update matched 0 rows for id', heatRow.id)
+        setError('Heatmap update changed 0 rows (likely blocked by a policy).')
+      }
     }
 
     void fetchHeatmap() // refresh the overlay so a visible toggle updates live
