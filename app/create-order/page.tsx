@@ -117,7 +117,7 @@ export default function CreateOrderPage() {
       .insert({
         order_number: generatedOrderNumber,
         status: 'PENDING',
-        user_id: authData.user.id,
+        customer_id: authData.user.id,
       })
       .select('id')
       .single()

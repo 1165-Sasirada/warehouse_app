@@ -50,12 +50,14 @@ export default function OrdersPage() {
         'id, order_number, status, created_at, order_items(quantity, sku:skus(name))',
         { count: 'exact' }
       )
-      .eq('user_id', authData.user.id)
+      .eq('customer_id', authData.user.id)
       .order('created_at', { ascending: false })
 
     if (dateFilter) {
-      const start = `${dateFilter}T00:00:00`
-      const end = `${dateFilter}T23:59:59`
+      // Parsed as local time (no "Z"), then converted to UTC for the query,
+      // so "Oct 11" means Oct 11 in the viewer's timezone.
+      const start = new Date(`${dateFilter}T00:00:00`).toISOString()
+      const end = new Date(`${dateFilter}T23:59:59.999`).toISOString()
       query = query.gte('created_at', start).lte('created_at', end)
     }
 

@@ -25,6 +25,13 @@ interface PickItem {
 
 type Point = { row: number; col: number }
 
+interface RouteResult {
+  naive_distance: number
+  optimized_distance: number
+  distance_saved: number
+  pick_steps: { location_label: string; path: [number, number][] }[]
+}
+
 export default function DashboardPage() {
   const [orderAccepted, setOrderAccepted] = useState(false)
   const [pickedCount, setPickedCount] = useState(0)
@@ -64,16 +71,28 @@ export default function DashboardPage() {
   // ("row-col"), which is what WarehouseMap expects for its heatmap
   // prop. Re-run this after every pick so the overlay stays live.
   async function fetchHeatmap() {
+    // Only rows with picks: location_heatmaps has one row per bin (1,800),
+    // but the API returns at most 1,000 rows per request, so asking for
+    // everything can silently cut off the rows that matter.
     const { data, error: heatError } = await supabase
       .from('location_heatmaps')
       .select('pick_count, location:locations(grid_y, grid_x)')
+      .gt('pick_count', 0)
 
-    if (heatError) return
+    if (heatError) {
+      console.error('Heatmap fetch failed:', heatError)
+      return
+    }
 
+    // Each map tile (aisle + bay) holds 9 bins (3 levels x 3 bins), so
+    // several heatmap rows share one tile. Add them up — assigning would
+    // let one row overwrite another.
     const map: Record<string, number> = {}
     for (const row of data ?? []) {
       const loc = Array.isArray(row.location) ? row.location[0] : row.location
-      if (loc) map[`${loc.grid_y}-${loc.grid_x}`] = row.pick_count
+      if (!loc) continue
+      const key = `${loc.grid_y}-${loc.grid_x}`
+      map[key] = (map[key] ?? 0) + row.pick_count
     }
     setHeatmapData(map)
   }
@@ -134,20 +153,30 @@ export default function DashboardPage() {
       }
     })
 
-    const routeResponse = await fetch('/api/path', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        items: mappedItems.map((item) => ({
-          name: item.name,
-          label: item.location,
-          pick_coord: [item.pick.row, item.pick.col],
-        })),
-      }),
-    })
-    const routeResult = await routeResponse.json()
-    if (!routeResponse.ok) {
-      setError(routeResult.error ?? 'Unable to calculate the A* route.')
+    let routeResult: RouteResult
+    try {
+      const routeResponse = await fetch('/api/path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: mappedItems.map((item) => ({
+            name: item.name,
+            label: item.location,
+            pick_coord: [item.pick.row, item.pick.col],
+          })),
+        }),
+      })
+      const body = await routeResponse.json()
+      if (!routeResponse.ok) {
+        throw new Error(body.error ?? 'Unable to calculate the A* route.')
+      }
+      routeResult = body as RouteResult
+    } catch (routeError) {
+      // `next dev` doesn't run the Python function, so this also covers
+      // the "nothing happens" case when testing locally.
+      setError(
+        routeError instanceof Error ? routeError.message : 'Unable to reach the route service.'
+      )
       setSaving(false)
       return
     }
@@ -216,17 +245,13 @@ export default function DashboardPage() {
 
     if (stockFetchError) {
       console.error('Stock lookup failed:', stockFetchError)
-      setError(`Stock lookup failed: ${stockFetchError.message}`)
     } else if (stockRow) {
       const newQuantity = Math.max(0, stockRow.quantity - activeItem.quantity)
       const { error: stockUpdateError } = await supabase
         .from('stock')
         .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
         .eq('id', stockRow.id)
-      if (stockUpdateError) {
-        console.error('Stock update failed:', stockUpdateError)
-        setError(`Stock update failed: ${stockUpdateError.message}`)
-      }
+      if (stockUpdateError) console.error('Stock update failed:', stockUpdateError)
     }
 
     // Increment the pick-frequency heatmap for this location. Requires
@@ -240,9 +265,8 @@ export default function DashboardPage() {
 
     if (heatFetchError) {
       console.error('Heatmap lookup failed:', heatFetchError, 'locationId:', activeItem.locationId)
-      setError(`Heatmap lookup failed: ${heatFetchError.message}`)
     } else if (heatRow) {
-      // .select() after update() returns the changed rows, so an RLS
+      // .select() after update() returns the changed rows, so a policy
       // block that matches zero rows (which raises no error on its own)
       // shows up as an empty array instead of passing silently.
       const { data: updatedHeat, error: heatUpdateError } = await supabase
@@ -252,10 +276,8 @@ export default function DashboardPage() {
         .select()
       if (heatUpdateError) {
         console.error('Heatmap update failed:', heatUpdateError)
-        setError(`Heatmap update failed: ${heatUpdateError.message}`)
       } else if (!updatedHeat || updatedHeat.length === 0) {
         console.error('Heatmap update matched 0 rows for id', heatRow.id)
-        setError('Heatmap update changed 0 rows (likely blocked by a policy).')
       }
     }
 
