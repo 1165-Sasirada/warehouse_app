@@ -185,7 +185,9 @@ export default function DashboardPage() {
       .map((step: { location_label: string }) =>
         mappedItems.find((item) => item.location === step.location_label)
       )
-      .filter(Boolean)
+      // .filter(Boolean) removes the undefined entries at runtime but doesn't
+      // tell TypeScript, so use a type guard (the strict build checks this).
+      .filter((item): item is PickItem => item !== undefined)
     const optimizedSegments: Point[][] = routeResult.pick_steps.map(
       (step: { path: [number, number][] }) => step.path.map(([row, col]) => ({ row, col }))
     )

@@ -2,6 +2,8 @@ WAREHOUSE APP - TESTING GUIDE
 =============================
 
 This document explains how to set up and test the system from start to finish.
+There are two kinds of users: customers (place orders, watch their status) and staff
+(pickers and managers, who pick orders and see stock/history).
 
 1. Set Up Supabase
 ------------------
@@ -10,8 +12,17 @@ Open Supabase Dashboard > SQL Editor and run these files in order:
 1) supabase/schema.sql
 2) supabase/rls.sql
 3) supabase/grants.sql
+4) supabase/patch-customer-and-heatmap.sql
+5) supabase/patch-order-ownership.sql
 
 Do not run schema.sql again if the schema has already been created.
+Patches 4 and 5 are already applied on the shared project; they are only needed on a
+fresh Supabase project. Patch 5 replaces the optional order-read policy at the end of
+patch 4.
+
+Whenever a SQL change and the code that depends on it are released together, push the
+code and run the SQL at the same time. If they are out of sync, pages such as History
+and Order Status will show nothing or an error until both are live.
 
 2. Configure Environment Variables
 ----------------------------------
@@ -31,20 +42,27 @@ Never use SUPABASE_SECRET_KEY in the frontend or put it in .env.local.
 
 3. Install the Python Environment
 ---------------------------------
-Open PowerShell at the project root:
-
-cd D:\CS\Year3\Project\warehouse_app
+Open a terminal at the project root (the folder that contains core/, scripts/, app/).
 
 If the virtual environment does not exist:
 
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+PowerShell:
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+Git Bash:
+python -m venv venv
+source venv/Scripts/activate
 pip install -r requirements.txt
 
 If PowerShell blocks activation:
 
 Set-ExecutionPolicy -Scope Process Bypass
-.\.venv\Scripts\Activate.ps1
+.\venv\Scripts\Activate.ps1
+
+The environment folder must be listed in .gitignore. If you name it .venv instead of venv,
+add ".venv/" to .gitignore before running "git add .".
 
 4. Seed Warehouse Data
 ----------------------
@@ -57,6 +75,7 @@ Expected data:
 - 1,800 locations
 - 50 SKUs
 - 4 demo stock records
+- 1,800 location_heatmaps rows (pick_count = 0), created by patch 4
 
 Seeded demo stock:
 
@@ -67,32 +86,62 @@ Mechanical Keyboard #4 -> A-11-1-1-A
 
 The seed script uses upsert, so it can be run repeatedly.
 
+If you add new locations later (for example the real seed), create their heatmap rows:
+
+insert into public.location_heatmaps (location_id, pick_count)
+select id, 0 from public.locations
+on conflict (location_id) do nothing;
+
+Quick check:
+
+select
+  (select count(*) from public.locations) as locations,
+  (select count(*) from public.location_heatmaps) as heatmap_rows,
+  (select count(*) from public.stock) as stock_rows;
+
+locations and heatmap_rows should be equal.
+
 5. Create Users in Supabase Auth
 --------------------------------
 Go to:
 
 Supabase Dashboard > Authentication > Users > Add user
 
-Create an account, for example:
+Create one account per role you want to test, for example:
 
-Email: tester@example.com
-Password: Test123456!
+tester@example.com     (picker)     password: Test123456!
+customer@example.com   (customer)   password: Test123456!
+manager@example.com    (manager)    password: Test123456!   (optional)
 
 Enable Auto Confirm User if available. Otherwise, confirm the user after creation.
-
+Check that each account appears in the Users list before moving on.
 
 6. Add Users to public.users
 ----------------------------
-Copy the User UID from Authentication > Users and run this SQL in Supabase:
+Every account needs a row in public.users. The role must be exactly one of:
+picker, manager, customer (no brackets).
+
+This version looks the UID up by email, so nothing has to be copied by hand:
 
 insert into public.users (id, email, full_name, role)
-values (
-  'PUT-USER-UID-HERE',
-  'tester@example.com',
-  'Test Picker',
-  '[picker]'
-);
+select id, email, 'Test Picker', 'picker'
+from auth.users
+where email = 'tester@example.com';
 
+insert into public.users (id, email, full_name, role)
+select id, email, 'Test Customer', 'customer'
+from auth.users
+where email = 'customer@example.com';
+
+Check:
+
+select email, full_name, role from public.users;
+
+What each role sees:
+
+picker    Dashboard, Stock, History           lands on /dashboard
+manager   Dashboard, Create Order, Stock, History   lands on /dashboard
+customer  Create Order, Order Status          lands on /create-order
 
 7. Run the Frontend
 -------------------
@@ -110,22 +159,28 @@ If .env.local changes, restart the server:
 Ctrl+C
 npm run dev
 
-The Dashboard calls the Python A* endpoint at /api/path. For local testing of the Vercel
-Python function, use the Vercel development runtime (vercel dev) or test after deployment.
-Running only next dev does not execute root-level Vercel Python functions.
+The Dashboard calls the Python route endpoint at /api/path. Running only "npm run dev"
+does NOT execute root-level Vercel Python functions, so Accept Order cannot calculate a
+route locally and the dashboard shows an error (for example "Unexpected token '<'...").
+Test picking on the deployed Vercel site, or run "vercel dev" locally.
 
-8. Create an Order
-------------------
-Log in with a created user and open:
+Everything that only touches Supabase (login, Create Order, Order Status, Stock, History)
+works with plain "npm run dev".
 
-http://localhost:3000/create-order
+8. Customer Flow: Create an Order
+---------------------------------
+Log in as customer@example.com.
+
+Expected:
+- You land on /create-order (not the dashboard).
+- The sidebar shows only Create Order and Order Status.
 
 On the Create Order page:
 
 1) Select a SKU.
 2) The location is selected automatically from stock.
-3) Enter a quantity.
-4) Click + Add item to add another item.
+3) Enter a quantity (it cannot exceed the stock shown).
+4) Click + Add item to add another item (each SKU only once per order).
 5) Click Create pending order.
 
 The user does not enter:
@@ -143,23 +198,43 @@ ORD-20260923-143025
 
 Verify in Supabase:
 
-orders:
+select order_number, status, customer_id, user_id
+from public.orders
+order by created_at desc
+limit 3;
+
 - status = PENDING
 - order_number starts with ORD-
+- customer_id = the customer's id
+- user_id is empty (no employee yet)
 
 order_items:
 - order_id
 - sku_id
 - location_id
 - quantity
-- pick_sequence
+- pick_sequence (1, 2, 3, ...)
 - picked_status = false
 
-9. Accept an Order on the Dashboard
-------------------------------------
-Open:
+9. Customer Flow: Order Status
+------------------------------
+As the customer, open Order Status from the sidebar (/orders).
 
-http://localhost:3000/dashboard
+Expected:
+- The new order is listed with its items (quantity x name), the time it was placed, and
+  the status Pending.
+- Newest orders are on top, 20 orders per page (Previous / Next at the bottom).
+- "Filter by date" shows only orders placed on that day (your local timezone). Clear removes it.
+- Only this customer's own orders appear.
+- Status changes to In progress when a picker accepts the order and to Completed when the
+  last item is picked. The order must STAY in the list after completion.
+- There is no live refresh yet: reload the page to see a new status.
+
+10. Staff Flow: Accept an Order on the Dashboard
+-------------------------------------------------
+Log in as the picker (tester@example.com) and open:
+
+http://localhost:3000/dashboard   (or the deployed site, see section 7)
 
 The dashboard loads PENDING orders from Supabase and shows their count in the badge.
 
@@ -174,7 +249,15 @@ The dashboard loads:
 - real location data
 - pick coordinates from locations
 
-10. Test Picking Items
+and asks /api/path for the route. In the database the order now has user_id = the picker
+and customer_id unchanged:
+
+select order_number, status, customer_id, user_id
+from public.orders
+order by created_at desc
+limit 3;
+
+11. Test Picking Items
 ----------------------
 1) View the route on the warehouse map.
 2) Follow the path to the rack.
@@ -183,6 +266,23 @@ The dashboard loads:
 5) The picked rack changes to pink.
 6) The completed route remains visible.
 7) The next item is displayed.
+
+Every pick also does two more things (check them in Supabase after the first pick):
+
+Stock goes down by the ordered quantity (never below 0):
+
+select sk.name, l.label, s.quantity
+from public.stock s
+join public.skus sk on sk.id = s.sku_id
+join public.locations l on l.id = s.location_id
+order by sk.name;
+
+The location's heatmap count goes up by 1 and last_picked_at is set:
+
+select l.label, h.pick_count, h.last_picked_at
+from public.location_heatmaps h
+join public.locations l on l.id = h.location_id
+where h.pick_count > 0;
 
 When all items are picked:
 
@@ -195,9 +295,25 @@ The system records:
 - optimized_distance
 - distance_saved
 
-11. Check History
+Distance saved is never negative: the optimized route is at least as short as the naive
+one (items in the order they were added). It is 0 when the customer's order was already the
+best order.
+
+12. Test the Heatmap
+--------------------
+On the dashboard, use the "Heatmap off/on" button at the bottom bar.
+
+Expected:
+- After at least one completed pick, the racks that were picked from are colored.
+- Colors are relative to the busiest rack: the hottest one is always the darkest, and a
+  rack with fewer picks gets a lighter color. Racks with no picks keep the normal color.
+- One map square is one aisle + bay (9 bins), so the counts of those bins are added up.
+- With only the 4 demo SKUs, at most 4 racks can be colored.
+- The overlay refreshes after each pick.
+
+13. Check History
 -----------------
-Open:
+Log in as a picker or manager and open:
 
 http://localhost:3000/history
 
@@ -208,26 +324,54 @@ Displayed data:
 - Order number
 - Created
 - Completed
-- Employee
+- Employee (the picker who accepted the order)
 - Naive distance
 - Optimized distance
 - Saved percentage
 
-12. Verify with Supabase Table Editor
+Also test:
+- "Filter by completed date" shows only orders completed on that day; Clear shows all.
+- Click an order row (or its arrow) to expand the list of items with quantities and
+  locations; click again to collapse.
+- Saved shows 0% (not a dash) when naive and optimized are equal.
+- Orders completed before the route fix may still show a negative percentage; new orders
+  should not.
+- Employee names: you always see your own. Seeing other staff members' names needs the
+  optional "Staff can read all profiles" policy from patch 5.
+
+14. Check the Stock Page
+------------------------
+Log in as staff and open /stock.
+
+- Search filters by SKU name or location label.
+- Restock All sets the quantity of every stock row to 100 and saves it to the database.
+  Check with the stock query in section 11, or the Table Editor. If nothing changes, look
+  at the browser console for an error (the page does not show one).
+- Quantities drop after picks (section 11).
+- Only the first 1,000 rows are returned by the API, so the page will need pagination once
+  the real seed is loaded.
+
+15. Verify with Supabase Table Editor
 -------------------------------------
 Check the orders table:
 
 - PENDING before Accept Order
 - PICKING after Accept Order
 - COMPLETED after all items are picked
+- customer_id = who placed it, user_id = who picked it
 
 Check the order_items table:
 
 - picked_status = false before picking
 - picked_status = true after checking an item
 
-13. Validation Commands
+Check stock and location_heatmaps as described in section 11.
+
+16. Validation Commands
 -----------------------
+Run these before every push. Vercel runs the same build and type check; if "npm run build"
+fails, the deploy is rejected and the live site keeps running the previous version.
+
 Frontend:
 
 npm run lint
@@ -239,7 +383,9 @@ python -m py_compile scripts/seed.py core/warehouse.py core/pathfinder.py
 python -m py_compile api/path.py
 python scripts/demo.py
 
-14. Common Problems
+demo.py prints naive vs optimized distance; "Distance Saved" must be 0 or more.
+
+17. Common Problems
 -------------------
 Cannot log in:
 
@@ -248,6 +394,16 @@ Cannot log in:
 - Check the email and password.
 - Check .env.local.
 - Restart npm run dev after changing environment variables.
+
+Logged in as a customer but landed on the dashboard (or the other way round):
+
+- Check the role in public.users (select email, role from public.users).
+- Make sure you are testing the build that contains the role redirect (local vs deployed).
+
+Insert into public.users fails with a check constraint error:
+
+- The role must be exactly picker, manager or customer, without brackets.
+- If "customer" is rejected, run supabase/patch-customer-and-heatmap.sql.
 
 Demo data is incomplete:
 
@@ -272,39 +428,110 @@ No order appears on the Dashboard:
 - Check that orders.status = PENDING.
 - Refresh the Dashboard.
 
-15. System Flow
----------------
-Create Order:
+Accept Order does nothing or shows "Unexpected token '<'":
 
+- The Python route function is not running. Use the deployed site or "vercel dev"
+  (see section 7).
+
+Vercel build fails with a TypeScript error:
+
+- Run "npm run build" locally, fix the error, push again.
+
+History is empty or shows "more than one relationship":
+
+- The code and the orders.customer_id patch are out of sync, or an embed of users from
+  orders is missing its hint. Use users!user_id(...) (or users!orders_user_id_fkey(...)).
+
+Customer's Order Status is missing an order:
+
+- The order has no customer_id. See section 18.
+
+Heatmap does not change after picking:
+
+- Run the quick check in section 4 (heatmap_rows should equal locations).
+- Check that authenticated has UPDATE on location_heatmaps (patch 4).
+- Turn the heatmap button on; look in the browser console for errors.
+
+Restock All seems to do nothing:
+
+- Check the browser console, and confirm you are logged in. The page shows no error.
+
+18. Repairing Orders Without a Customer
+---------------------------------------
+Orders created by staff before the ownership patch legitimately have no customer_id.
+Customer orders should always have one. To list orders without it:
+
+select order_number, status, customer_id, user_id, created_at
+from public.orders
+where customer_id is null
+order by created_at desc;
+
+If a customer placed orders while old code was still live (their user_id holds the
+customer), this fixes them. It is safe to run more than once:
+
+update public.orders o
+set customer_id = o.user_id
+from public.users u
+where u.id = o.user_id and u.role = 'customer' and o.customer_id is null;
+
+update public.orders o
+set user_id = null
+from public.users u
+where u.id = o.user_id and u.role = 'customer';
+
+If a picker had already accepted such an order, its user_id was overwritten and the
+customer can't be worked out automatically. Set it by hand:
+
+update public.orders
+set customer_id = (select id from public.users where email = 'customer@example.com')
+where order_number = 'ORD-YYYYMMDD-HHMMSS';
+
+19. System Flow
+---------------
+Customer:
+
+Log in as customer -> lands on Create Order
+        |
+        v
 Select SKU + quantity
         |
         v
-Create orders = PENDING
+orders = PENDING (customer_id = customer) + order_items
         |
         v
+Order Status shows Pending
+
+Staff:
+
 Click Accept Order
         |
         v
-orders = PICKING
+orders = PICKING (user_id = picker)
+route calculated by /api/path (A* + best visiting order)
         |
         v
 Check each picked item
+   - order_items.picked_status = true
+   - stock.quantity decreases
+   - location_heatmaps.pick_count + 1
         |
         v
 Pick all items
         |
         v
-orders = COMPLETED
+orders = COMPLETED (+ completed_at and distances)
         |
         v
-Display in History
+Display in History (staff) and Order Status = Completed (customer)
 
-16. Recommended Future Improvements
+20. Recommended Future Improvements
 ------------------------------------
 - Resume PICKING orders after a page refresh.
-- Decrease stock when an item is picked.
-- Update location_heatmaps.
+- Make stock + heatmap updates transactional (one database function).
 - Prevent multiple pickers from accepting the same order.
 - Move order acceptance to a server-side API.
-- Add realtime updates.
+- Role checks beyond orders (for example Restock All for managers only).
+- Pagination for large tables before the real seed.
+- Add realtime updates (for example Order Status without refresh).
+- Decide on the Upstash queue (burst of orders) for the cloud architecture.
 - Add automated tests.
