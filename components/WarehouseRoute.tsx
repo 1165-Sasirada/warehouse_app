@@ -14,6 +14,14 @@ interface WarehouseRouteProps {
 const CELL = 25
 const GAP = 5
 const STEP = CELL + GAP
+const FILTER_PADDING = 20
+
+function toSvgPoint(point: Point) {
+  return {
+    x: point.col * STEP + CELL / 2,
+    y: point.row * STEP + CELL / 2,
+  }
+}
 
 export default function WarehouseRoute({
   path,
@@ -38,6 +46,18 @@ export default function WarehouseRoute({
   const endY = endPoint ? endPoint.row * STEP + CELL / 2 : 0
   const flowX = startX - endX
   const flowY = startY - endY
+  const routePoints = path.map(toSvgPoint)
+  const filterPoints = routePoints.length > 0
+    ? routePoints
+    : completedPath.map(toSvgPoint)
+  const minX = Math.min(...filterPoints.map((point) => point.x))
+  const maxX = Math.max(...filterPoints.map((point) => point.x))
+  const minY = Math.min(...filterPoints.map((point) => point.y))
+  const maxY = Math.max(...filterPoints.map((point) => point.y))
+  const filterX = minX - FILTER_PADDING
+  const filterY = minY - FILTER_PADDING
+  const filterWidth = Math.max(maxX - minX, 1) + FILTER_PADDING * 2
+  const filterHeight = Math.max(maxY - minY, 1) + FILTER_PADDING * 2
 
   return (
     <g aria-label="Pick route">
@@ -69,7 +89,14 @@ export default function WarehouseRoute({
             />
           )}
         </linearGradient>
-        <filter id="warehouse-route-glow" x="-50%" y="-50%" width="200%" height="200%">
+        <filter
+          id="warehouse-route-glow"
+          filterUnits="userSpaceOnUse"
+          x={filterX}
+          y={filterY}
+          width={filterWidth}
+          height={filterHeight}
+        >
           <feGaussianBlur stdDeviation="4" result="blurredRoute" />
           <feMerge>
             <feMergeNode in="blurredRoute" />
