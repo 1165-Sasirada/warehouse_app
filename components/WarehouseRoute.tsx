@@ -100,17 +100,26 @@ export default function WarehouseRoute({
             d={pathData}
             fill="none"
             stroke="#c085e0"
-            strokeWidth={8}
+            strokeWidth={10}
             strokeLinejoin="round"
             strokeLinecap="round"
-            opacity={0.32}
+            opacity={0.4}
             filter="url(#warehouse-route-glow)"
           />
           <path
             d={pathData}
             fill="none"
+            stroke="#231942"
+            strokeWidth={7}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            opacity={0.9}
+          />
+          <path
+            d={pathData}
+            fill="none"
             stroke="url(#warehouse-route-gradient)"
-            strokeWidth={4}
+            strokeWidth={3.5}
             strokeLinejoin="round"
             strokeLinecap="round"
             filter="url(#warehouse-route-glow)"
