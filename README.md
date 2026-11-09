@@ -28,7 +28,7 @@ warehouse — with stock updates, a history page, and a pick-frequency heatmap.
 | Frontend | Next.js (React, TypeScript) + Tailwind | Dashboard, stock/history/orders/login pages |
 | Backend compute | Vercel Serverless Functions (Python) | Wraps the algorithm as an API |
 | Database & Auth | Supabase (Postgres) | Stores users, stock, orders, locations, heatmap counts |
-| Message queue | Upstash Redis | Planned: buffers rapid "Receive Order" clicks (not built yet) |
+| Message queue | Upstash Redis + QStash | Stores order jobs and dispatches retryable worker requests |
 | Hosting/CI-CD | Vercel + GitHub | Auto-deploy on push to `main` |
 
 Everything runs on free tiers — see the project proposal doc for the full cost/security
@@ -47,13 +47,23 @@ warehouse_app/
 │   └── seed.py                # Populates Supabase with locations, SKUs, and demo stock
 ├── api/
 │   └── path.py                # Vercel Python function wrapping the route optimizer
+├── app/api/
+│   ├── orders/                # Authenticated order enqueue API
+│   ├── order-batches/         # Manager-only bulk order creation and progress
+│   └── queue/process/         # QStash-signed order worker
+├── lib/server/
+│   ├── orderQueue.ts          # Redis job state and QStash dispatch/retries
+│   ├── requestAuth.ts         # Server-side user and role validation
+│   └── supabaseAdmin.ts       # Server-only Supabase secret client
 ├── supabase/
 │   ├── schema.sql             # Creates all 7 tables + enables Realtime on 2 of them
 │   ├── rls.sql                 # Row Level Security policies
 │   ├── grants.sql              # Table-level GRANTs (required since "auto-expose new
 │   │                            # tables" is off in our Supabase project settings)
 │   ├── patch-customer-and-heatmap.sql   # 'customer' role, heatmap UPDATE grant + row backfill
-│   └── patch-order-ownership.sql        # orders.customer_id, is_staff(), order read policy
+│   ├── patch-order-ownership.sql        # orders.customer_id, is_staff(), order read policy
+│   ├── queue-and-picking.sql            # Idempotent queued order RPC + atomic stock-safe pick
+│   └── queue-security-hardening.sql     # Removes direct browser order writes after deploy
 ├── app/                       # Next.js App Router pages
 │   ├── layout.tsx              # Root layout — fonts (JetBrains Mono, Karla, Bai Jamjuree)
 │   ├── login/page.tsx           # Login (customers -> /create-order, staff -> /dashboard)
@@ -79,10 +89,12 @@ warehouse_app/
 └── README.md
 ```
 
-Not built yet: the order-ingestion queue/worker (Upstash), atomic order claiming, and
-server-side stock/heatmap transactions. Today the browser talks to Supabase directly for
-creating orders, accepting them, and recording picks; only route calculation runs on the
-Python serverless function.
+Order creation is queued through Upstash Redis and dispatched to a QStash-signed Vercel
+worker. The Create Order page also allows managers to enqueue up to 50 real orders per batch.
+The worker creates each order and its items transactionally and safely handles duplicate
+delivery. Picking uses a database function that checks stock and updates the pick, stock,
+heatmap, and final order status atomically. Atomic claiming of the oldest pending order is
+still a follow-up; the existing dashboard accept action is still client-driven.
 
 ## 4. Getting Started
 
@@ -118,10 +130,26 @@ required for any env var used in browser-side code):
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxxxxxxxxxxxxxxxxxx
+
+# Server-only values for queued orders (never prefix these with NEXT_PUBLIC_)
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxxxxxx
+UPSTASH_REDIS_REST_URL=https://your-database.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your-redis-rest-token
+QSTASH_TOKEN=your-qstash-token
+QSTASH_CURRENT_SIGNING_KEY=your-current-signing-key
+QSTASH_NEXT_SIGNING_KEY=your-next-signing-key
+ORDER_QUEUE_WORKER_URL=https://your-deployment.example/api/queue/process
 ```
 
 Get both sets of values from the Supabase dashboard → Project Settings → API Keys. **Never
 commit `.env` or `.env.local`** — both are in `.gitignore`.
+
+The Redis REST URL/token and QStash token/signing keys come from the Upstash Console.
+`ORDER_QUEUE_WORKER_URL` must be the public HTTPS URL of the deployed worker endpoint. Add
+the server-only values to Vercel Project → Settings → Environment Variables for the intended
+environment and redeploy after changes. Keep `SUPABASE_SECRET_KEY` and all Upstash tokens
+server-only; do not use `NEXT_PUBLIC_` names for them.
 
 Ask whoever set up Supabase and Vercel to add you as a project member on both, or share
 credentials directly over a private channel.
@@ -140,9 +168,13 @@ not per person):
    `location_heatmaps`, and backfills one heatmap row (pick_count 0) per location
 5. `supabase/patch-order-ownership.sql` — adds `orders.customer_id`, the `is_staff()` helper,
    and the order/profile read policies
+6. `supabase/queue-and-picking.sql` — adds transactional order creation and stock-safe picking
+7. Deploy the application code with the server environment variables above
+8. `supabase/queue-security-hardening.sql` — disables direct authenticated order inserts and
+   item updates, forcing writes through the queue and atomic pick function
 
 Steps 4 and 5 are already applied to our shared project; run them again only on a fresh one.
-Step 5 replaces the optional order-read policy at the end of step 4.
+The queue SQL files are new and must be applied once to any project using queued orders.
 
 Skipping step 3 causes `permission denied for table ...` errors even though RLS policies
 look correct — GRANT and RLS are two separate layers; RLS filters rows, GRANT decides
@@ -151,9 +183,10 @@ whether a role can attempt the action at all.
 **Do not re-run `schema.sql` if tables already exist** — coordinate any schema changes
 together rather than one person re-running it solo.
 
-**Deploy order matters for schema changes.** If a SQL change and the frontend code that
-depends on it ship separately, the live site breaks in between. Push the code and run the SQL
-at the same time, and run `npm run build` locally first (see Troubleshooting).
+**Deploy order matters for queued orders.** Run `queue-and-picking.sql`, deploy the matching
+application, then run `queue-security-hardening.sql`. Do not run the hardening file before
+deploying: it intentionally disables the old browser-based order insert and item-update paths.
+Run `npm run build` locally before deploying.
 
 ### User roles
 
@@ -233,6 +266,10 @@ Dashboard → Authentication → Users → Add User and link it to `public.users
 `npm run dev` does **not** run the Python function at `api/path.py`, so Accept Order cannot
 calculate a route there and the dashboard shows an error (typically "Unexpected token '<'…").
 To test picking, either use the deployed Vercel site or run `vercel dev` locally.
+
+Queued order processing also needs a public HTTPS worker URL and Upstash credentials. Local
+order submission will not reach QStash unless the worker endpoint is publicly deployed; use
+a Vercel Preview deployment for end-to-end queue testing.
 
 Before every push, run `npm run build`. Vercel runs the same type check; if it fails, the
 deploy is rejected and the live site keeps running the previous version.
@@ -335,12 +372,14 @@ see even if they typed a staff URL — but the pages themselves aren't blocked y
 - [x] Animated route gradient, current-target glow, completed paths, and walk-speed control
 - [x] Server-side route calculation using the Python pathfinder
 - [x] Complete the order, store distance metrics, and show it in History
+- [x] Queue customer orders through Redis and process them with a signed QStash worker
+- [x] Manager-only real order batches (up to 50 orders) with queue progress
+- [x] Atomic order creation and stock-checked picking
 
 ### Still required for a complete production system
 
 - [ ] Receive orders from an external source/queue and persist them as `PENDING`
 - [ ] Accept one pending order atomically and mark it `PICKING`
-- [ ] Make the stock decrement + heatmap update transactional (currently read-then-write)
 - [ ] Resume existing `PICKING` orders after refresh
 - [ ] Role checks beyond orders: e.g. Restock All and stock edits should be manager-only
 - [ ] Pagination/server-side search for large tables (Stock) before the real seed

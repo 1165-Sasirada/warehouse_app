@@ -223,64 +223,22 @@ export default function DashboardPage() {
     setSaving(true)
     setError(null)
 
-    const { error: itemError } = await supabase
-      .from('order_items')
-      .update({ picked_status: true })
-      .eq('id', activeItem.id)
+    const isFinalItem = pickedCount === items.length - 1
+    const { error: pickError } = await supabase.rpc('pick_order_item', {
+      p_order_item_id: activeItem.id,
+      p_naive_distance: isFinalItem ? naiveDistance : null,
+      p_optimized_distance: isFinalItem ? optimizedDistance : null,
+      p_distance_saved: isFinalItem ? distanceSaved : null,
+    })
 
-    if (itemError) {
-      setError(itemError.message)
+    if (pickError) {
+      setError(
+        pickError.message.includes('INSUFFICIENT_STOCK')
+          ? 'Not enough stock to pick this quantity. Ask a manager to restock, then try again.'
+          : pickError.message
+      )
       setSaving(false)
       return
-    }
-
-    // Decrement stock for the picked item. Read-then-write rather than
-    // an atomic SQL decrement — fine for a classroom demo's traffic
-    // level, but not safe under concurrent pickers (see README's
-    // "still required" list for the transactional version).
-    const { data: stockRow, error: stockFetchError } = await supabase
-      .from('stock')
-      .select('id, quantity')
-      .eq('sku_id', activeItem.skuId)
-      .eq('location_id', activeItem.locationId)
-      .single()
-
-    if (stockFetchError) {
-      console.error('Stock lookup failed:', stockFetchError)
-    } else if (stockRow) {
-      const newQuantity = Math.max(0, stockRow.quantity - activeItem.quantity)
-      const { error: stockUpdateError } = await supabase
-        .from('stock')
-        .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
-        .eq('id', stockRow.id)
-      if (stockUpdateError) console.error('Stock update failed:', stockUpdateError)
-    }
-
-    // Increment the pick-frequency heatmap for this location. Requires
-    // the location_heatmaps row to already exist — run
-    // supabase/patch-customer-and-heatmap.sql once to backfill it.
-    const { data: heatRow, error: heatFetchError } = await supabase
-      .from('location_heatmaps')
-      .select('id, pick_count')
-      .eq('location_id', activeItem.locationId)
-      .single()
-
-    if (heatFetchError) {
-      console.error('Heatmap lookup failed:', heatFetchError, 'locationId:', activeItem.locationId)
-    } else if (heatRow) {
-      // .select() after update() returns the changed rows, so a policy
-      // block that matches zero rows (which raises no error on its own)
-      // shows up as an empty array instead of passing silently.
-      const { data: updatedHeat, error: heatUpdateError } = await supabase
-        .from('location_heatmaps')
-        .update({ pick_count: heatRow.pick_count + 1, last_picked_at: new Date().toISOString() })
-        .eq('id', heatRow.id)
-        .select()
-      if (heatUpdateError) {
-        console.error('Heatmap update failed:', heatUpdateError)
-      } else if (!updatedHeat || updatedHeat.length === 0) {
-        console.error('Heatmap update matched 0 rows for id', heatRow.id)
-      }
     }
 
     void fetchHeatmap() // refresh the overlay so a visible toggle updates live
@@ -293,21 +251,6 @@ export default function DashboardPage() {
       setCompletedTargets((targets) => [...targets, activeItem.rack])
     }
     setPickedCount((count) => count + 1)
-
-    if (pickedCount === items.length - 1) {
-      const { error: orderError } = await supabase
-        .from('orders')
-        .update({
-          status: 'COMPLETED',
-          naive_distance: naiveDistance,
-          optimized_distance: optimizedDistance,
-          distance_saved: distanceSaved,
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', orderId)
-
-      if (orderError) setError(orderError.message)
-    }
     setSaving(false)
   }
 
