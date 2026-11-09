@@ -58,7 +58,7 @@ export default function WarehouseRoute({
   const filterY = minY - FILTER_PADDING
   const filterWidth = Math.max(maxX - minX, 1) + FILTER_PADDING * 2
   const filterHeight = Math.max(maxY - minY, 1) + FILTER_PADDING * 2
-  const stationaryMarker = path.length === 1 ? toSvgPoint(path[0]) : null
+  const routeStartMarker = path.length > 0 ? toSvgPoint(path[0]) : null
 
   return (
     <g aria-label="Pick route">
@@ -146,15 +146,14 @@ export default function WarehouseRoute({
         </>
       )}
 
-      {animate && stationaryMarker && (
+      {animate && routeStartMarker && (
         <circle
-          cx={stationaryMarker.x}
-          cy={stationaryMarker.y}
+          cx={routeStartMarker.x}
+          cy={routeStartMarker.y}
           r="7"
           fill="#231942"
           stroke="#f5ebfa"
           strokeWidth="1.5"
-          filter="url(#warehouse-route-glow)"
         />
       )}
 
@@ -165,7 +164,6 @@ export default function WarehouseRoute({
           fill="#231942"
           stroke="#f5ebfa"
           strokeWidth="1.5"
-          filter="url(#warehouse-route-glow)"
         >
           <animateMotion dur={`${8 / speed}s`} repeatCount="indefinite" path={pathData} />
         </circle>
