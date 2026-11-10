@@ -75,13 +75,18 @@ export default function CreateOrderPage() {
         sku: { name: string } | null
         location: { label: string } | null
       }>
-      setStockOptions(rows.filter((row) => row.sku && row.location).map((row) => ({
-        skuId: row.sku_id,
-        name: row.sku!.name,
-        locationId: row.location_id,
-        locationLabel: row.location!.label,
-        availableQuantity: row.quantity,
-      })))
+      const uniqueOptions = new Map<string, StockOption>()
+      for (const row of rows) {
+        if (!row.sku || !row.location || uniqueOptions.has(row.sku_id)) continue
+        uniqueOptions.set(row.sku_id, {
+          skuId: row.sku_id,
+          name: row.sku.name,
+          locationId: row.location_id,
+          locationLabel: row.location.label,
+          availableQuantity: row.quantity,
+        })
+      }
+      setStockOptions([...uniqueOptions.values()])
     }
     setLoading(false)
   }
