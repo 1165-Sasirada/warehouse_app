@@ -9,6 +9,7 @@
 - ส่งคำสั่งซื้อผ่าน Upstash Redis และ QStash ไปยัง worker ที่ตรวจลายเซ็น
 - ผู้จัดการสร้างชุดคำสั่งซื้อจำลองได้สูงสุด 50 รายการ
 - คำนวณและแสดงเส้นทางหยิบสินค้า พร้อมสถานะคำสั่งซื้อและฮีตแมป
+- Dashboard รับการเปลี่ยนแปลงคำสั่งซื้อที่ยังรอหยิบผ่าน Supabase Realtime
 - บันทึกการหยิบแบบ atomic ซึ่งตรวจสต็อกและอัปเดต stock, heatmap และสถานะ order item ใน transaction เดียว
 - ดูสถานะคำสั่งซื้อของลูกค้าและประวัติรายการที่เสร็จแล้ว
 - ค้นหา stock และใช้ `Restock All` เพื่อกำหนดจำนวนทุกรายการเป็น 100 สำหรับการสาธิต
@@ -127,6 +128,12 @@ SUPABASE_SECRET_KEY=sb_secret_your-key
 
 RLS และ GRANT เป็นคนละชั้น: RLS กำหนดแถวที่มองเห็นหรือแก้ไขได้ ส่วน GRANT อนุญาตให้ role เริ่มทำคำสั่งกับตารางได้
 
+Dashboard ใช้ Supabase Realtime รับ order ใหม่โดยไม่ต้อง refresh ด้วย ให้เปิดตาราง `orders` ใน publication `supabase_realtime` ด้วย หากยังไม่ได้เปิด สามารถรันคำสั่งนี้หนึ่งครั้ง:
+
+```sql
+alter publication supabase_realtime add table public.orders;
+```
+
 ## Seed คลังสินค้า
 
 รันจากโฟลเดอร์หลัก และตรวจว่า `.env` ชี้ไปยัง Supabase โปรเจกต์ที่ถูกต้อง
@@ -236,7 +243,7 @@ python scripts/demo.py
 - การรับ order เก่าสุดยังเป็นการอ่านและอัปเดตจาก Dashboard ไม่ใช่ atomic claim; พนักงานหลายคนอาจพยายามรับ order เดียวกัน
 - Dashboard ยังไม่กู้คืน order สถานะ `PICKING` หลัง refresh
 - หน้า Order Status ต้อง reload เองเพื่อดูสถานะใหม่ ยังไม่มี realtime refresh
-- หน้า Stock แสดงครั้งละ 20 แถวและโหลดข้อมูลจาก Supabase เป็นช่วงละ 1,000 แถว ส่วน Create Order ยังโหลด stock โดยไม่แบ่งหน้า จึงอาจได้รับข้อมูลไม่ครบเมื่อมี stock มากกว่า 1,000 แถว
+- หน้า Stock แสดงครั้งละ 20 แถวและโหลดข้อมูลจาก Supabase เป็นช่วงละ 1,000 แถว; History แสดง 20 orders ต่อหน้า ส่วน Create Order ยังโหลด stock โดยไม่แบ่งหน้า จึงอาจได้รับข้อมูลไม่ครบเมื่อมี stock มากกว่า 1,000 แถว
 
 ## เอกสารอ้างอิง
 
@@ -244,3 +251,4 @@ python scripts/demo.py
 - [design-ref/color-reference.txt](design-ref/color-reference.txt): สีของ UI
 - [design-ref/layout-reference.txt](design-ref/layout-reference.txt): โครงสร้างหน้า
 - [design-ref/warehouse-app-init-design.txt](design-ref/warehouse-app-init-design.txt): แนวคิดการออกแบบเริ่มต้น
+- `PROGRAM_FLOW_TH.md`: คำอธิบายละเอียดของ flow ตั้งแต่ login ถึงการหยิบสินค้าและหน้าที่ของบริการ cloud (เก็บเฉพาะในเครื่องและไม่ commit)
