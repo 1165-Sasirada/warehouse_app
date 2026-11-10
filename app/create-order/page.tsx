@@ -245,7 +245,7 @@ export default function CreateOrderPage() {
       {userRole === 'manager' && (
         <section className="mb-5 max-w-4xl rounded-md border border-[#231942]/20 bg-white/40 p-5">
           <h2 className="font-[var(--font-title)] text-lg font-medium text-[#231942]">
-            Create a batch of real orders
+            Simulate a batch of orders
           </h2>
           <p className="mt-1 text-sm text-[#4a4e69]">
             Orders use available SKUs and are assigned to your Manager account. Total demand may exceed stock.
@@ -269,7 +269,7 @@ export default function CreateOrderPage() {
               disabled={batchSaving}
               className="rounded-sm bg-[#231942] px-4 py-2 text-sm text-[#e0b1cb] disabled:opacity-50"
             >
-              {batchSaving ? 'Queueing orders…' : 'Create real order batch'}
+              {batchSaving ? 'Queueing orders…' : 'Create bacth of orders'}
             </button>
           </div>
           {batchMessage && <p role="status" className="mt-3 text-sm text-[#231942]">{batchMessage}</p>}
