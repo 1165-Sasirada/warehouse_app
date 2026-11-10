@@ -24,19 +24,16 @@ interface OrderRow {
 
 const ROW_COLORS = ['#5e548e', '#9f86c0']
 const COLUMN_COUNT = 7
+const PAGE_SIZE = 20
 
 export default function HistoryPage() {
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dateFilter, setDateFilter] = useState('') // yyyy-mm-dd, empty = all
+  const [page, setPage] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void fetchHistory(), 0)
-    return () => window.clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFilter])
 
   async function fetchHistory() {
     setLoading(true)
@@ -48,7 +45,8 @@ export default function HistoryPage() {
     let query = supabase
       .from('orders')
       .select(
-        'id, order_number, created_at, completed_at, naive_distance, optimized_distance, distance_saved, user:users!user_id(full_name), order_items(quantity, sku:skus(name), location:locations(label))'
+        'id, order_number, created_at, completed_at, naive_distance, optimized_distance, distance_saved, user:users!user_id(full_name), order_items(quantity, sku:skus(name), location:locations(label))',
+        { count: 'exact' }
       )
       .eq('status', 'COMPLETED')
       .order('completed_at', { ascending: false })
@@ -60,16 +58,26 @@ export default function HistoryPage() {
       query = query.gte('completed_at', start).lte('completed_at', end)
     }
 
-    const { data, error: fetchError } = await query
+    const from = page * PAGE_SIZE
+    const { data, error: fetchError, count } = await query.range(from, from + PAGE_SIZE - 1)
 
     if (fetchError) {
       setError(fetchError.message)
       setOrders([])
+      setTotalCount(0)
     } else {
       setOrders((data ?? []) as unknown as OrderRow[])
+      setTotalCount(count ?? 0)
     }
     setLoading(false)
   }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchHistory(), 0)
+    return () => window.clearTimeout(timer)
+    // The fetch intentionally reruns only when the date or page changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFilter, page])
 
   function formatTimestamp(iso: string | null) {
     if (!iso) return '—'
@@ -85,6 +93,8 @@ export default function HistoryPage() {
     }
     return `${Math.round((order.distance_saved / order.naive_distance) * 100)}%`
   }
+
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f2e9e4]">
@@ -104,12 +114,18 @@ export default function HistoryPage() {
               id="history-date"
               type="date"
               value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
+              onChange={(e) => {
+                setDateFilter(e.target.value)
+                setPage(0)
+              }}
               className="rounded-sm border border-[#231942]/30 bg-white/60 px-2 py-1 font-[var(--font-body)] text-sm text-[#231942]"
             />
             {dateFilter && (
               <button
-                onClick={() => setDateFilter('')}
+                onClick={() => {
+                  setDateFilter('')
+                  setPage(0)
+                }}
                 className="font-[var(--font-body)] text-sm text-[#231942] underline"
               >
                 Clear
@@ -210,6 +226,28 @@ export default function HistoryPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-3 flex shrink-0 items-center justify-between text-sm text-[#231942]">
+          <span>Page {page + 1} of {pageCount} ({totalCount} orders)</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              disabled={page === 0 || loading}
+              className="rounded-sm border border-[#231942]/40 px-3 py-1 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+              disabled={page >= pageCount - 1 || loading}
+              className="rounded-sm border border-[#231942]/40 px-3 py-1 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -98,11 +98,47 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadPendingOrders()
-      void fetchHeatmap()
-    }, 0)
-    return () => window.clearTimeout(timer)
+    const channel = supabase
+      .channel('dashboard-orders')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'orders',
+      }, (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const deletedOrder = payload.old as unknown as Pick<PendingOrder, 'id'>
+          setPendingOrders((orders) => orders.filter((order) => order.id !== deletedOrder.id))
+          return
+        }
+
+        const changedOrder = payload.new as unknown as PendingOrder & { status: string }
+        if (!changedOrder.id) return
+
+        setPendingOrders((orders) => {
+          const remaining = orders.filter((order) => order.id !== changedOrder.id)
+          if (changedOrder.status !== 'PENDING') return remaining
+
+          return [...remaining, {
+            id: changedOrder.id,
+            order_number: changedOrder.order_number,
+            created_at: changedOrder.created_at,
+          }].sort((first, second) => first.created_at.localeCompare(second.created_at))
+        })
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void loadPendingOrders()
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('Live order subscription failed:', status)
+          void loadPendingOrders()
+        }
+      })
+
+    const heatmapTimer = window.setTimeout(() => void fetchHeatmap(), 0)
+    return () => {
+      window.clearTimeout(heatmapTimer)
+      void supabase.removeChannel(channel)
+    }
   }, [])
 
   async function handleAcceptOrder() {

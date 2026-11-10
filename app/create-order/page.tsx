@@ -269,7 +269,7 @@ export default function CreateOrderPage() {
               disabled={batchSaving}
               className="rounded-sm bg-[#231942] px-4 py-2 text-sm text-[#e0b1cb] disabled:opacity-50"
             >
-              {batchSaving ? 'Queueing orders…' : 'Create a batch of orders'}
+              {batchSaving ? 'Queueing orders…' : 'Create bacth of orders'}
             </button>
           </div>
           {batchMessage && <p role="status" className="mt-3 text-sm text-[#231942]">{batchMessage}</p>}

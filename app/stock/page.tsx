@@ -14,22 +14,31 @@ interface StockRow {
 // Baseline quantity used by "Restock All" — bulk-resets every row to this
 // value for demo purposes. Adjust if you want a different reset amount.
 const RESTOCK_QUANTITY = 100
+const PAGE_SIZE = 20
+const FETCH_SIZE = 1000
 
 export default function StockPage() {
   const [rows, setRows] = useState<StockRow[]>([])
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(true)
   const [restocking, setRestocking] = useState(false)
 
   async function fetchStock() {
-    const { data, error } = await supabase
-      .from('stock')
-      .select('id, quantity, sku:skus(name), location:locations(label)')
-      .order('id')
+    const allRows: StockRow[] = []
+    for (let offset = 0; ; offset += FETCH_SIZE) {
+      const { data, error } = await supabase
+        .from('stock')
+        .select('id, quantity, sku:skus(name), location:locations(label)')
+        .order('id')
+        .range(offset, offset + FETCH_SIZE - 1)
 
-    if (!error && data) {
-      setRows(data as unknown as StockRow[])
+      if (error) break
+      const batch = (data ?? []) as unknown as StockRow[]
+      allRows.push(...batch)
+      if (batch.length < FETCH_SIZE) break
     }
+    setRows(allRows)
     setLoading(false)
   }
 
@@ -58,6 +67,8 @@ export default function StockPage() {
       row.location?.label?.toLowerCase().includes(q)
     )
   })
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const pageRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f2e9e4]">
@@ -81,7 +92,10 @@ export default function StockPage() {
           type="text"
           placeholder="Search by SKU or location…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(0)
+          }}
           className="mb-4 w-full max-w-sm shrink-0 rounded-sm border border-[#231942]/30 bg-white/60 px-3 py-2 font-[var(--font-body)] text-sm text-[#231942] outline-none focus:border-[#231942]"
         />
 
@@ -108,7 +122,7 @@ export default function StockPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((row) => (
+                pageRows.map((row) => (
                   <tr key={row.id} className="border-t border-[#231942]/15 text-[#231942]">
                     <td className="px-4 py-2">{row.sku?.name ?? '—'}</td>
                     <td className="px-4 py-2">{row.location?.label ?? '—'}</td>
@@ -118,6 +132,28 @@ export default function StockPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-3 flex shrink-0 items-center justify-between text-sm text-[#231942]">
+          <span>Page {page + 1} of {pageCount} ({filtered.length} rows)</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              disabled={page === 0 || loading}
+              className="rounded-sm border border-[#231942]/40 px-3 py-1 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+              disabled={page >= pageCount - 1 || loading}
+              className="rounded-sm border border-[#231942]/40 px-3 py-1 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>
