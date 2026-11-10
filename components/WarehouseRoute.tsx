@@ -154,6 +154,7 @@ export default function WarehouseRoute({
           fill="#231942"
           stroke="#f5ebfa"
           strokeWidth="1.5"
+          opacity={0.4}
         />
       )}
 
