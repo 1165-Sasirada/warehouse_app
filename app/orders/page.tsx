@@ -26,23 +26,32 @@ export default function OrdersPage() {
   const [page, setPage] = useState(0)
   const [totalCount, setTotalCount] = useState(0)
   const [dateFilter, setDateFilter] = useState('') // yyyy-mm-dd, empty = all
+  const [customerId, setCustomerId] = useState<string | null>(null)
+  const [realtimeVersion, setRealtimeVersion] = useState(0)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void fetchOrders(), 0)
-    return () => window.clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, dateFilter])
+    let active = true
+    const timer = window.setTimeout(() => {
+      void supabase.auth.getUser().then(({ data, error: authError }) => {
+        if (!active) return
+        if (authError || !data.user) {
+          setError('Please sign in to view your orders.')
+          setLoading(false)
+          return
+        }
+        setCustomerId(data.user.id)
+      })
+    }, 0)
 
-  async function fetchOrders() {
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [])
+
+  async function fetchOrders(currentCustomerId: string) {
     setLoading(true)
     setError(null)
-
-    const { data: authData } = await supabase.auth.getUser()
-    if (!authData.user) {
-      setError('Please sign in to view your orders.')
-      setLoading(false)
-      return
-    }
 
     let query = supabase
       .from('orders')
@@ -50,7 +59,7 @@ export default function OrdersPage() {
         'id, order_number, status, created_at, order_items(quantity, sku:skus(name))',
         { count: 'exact' }
       )
-      .eq('customer_id', authData.user.id)
+      .eq('customer_id', currentCustomerId)
       .order('created_at', { ascending: false })
 
     if (dateFilter) {
@@ -73,6 +82,40 @@ export default function OrdersPage() {
     }
     setLoading(false)
   }
+
+  useEffect(() => {
+    if (!customerId) return
+
+    const channel = supabase
+      .channel(`customer-orders:${customerId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'orders',
+        filter: `customer_id=eq.${customerId}`,
+      }, () => {
+        setRealtimeVersion((version) => version + 1)
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setRealtimeVersion((version) => version + 1)
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('Live customer order subscription failed:', status)
+        }
+      })
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [customerId])
+
+  useEffect(() => {
+    if (!customerId) return
+    const timer = window.setTimeout(() => void fetchOrders(customerId), 0)
+    return () => window.clearTimeout(timer)
+    // The query intentionally refreshes when the user, page, date, or Realtime event changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId, page, dateFilter, realtimeVersion])
 
   function formatTimestamp(iso: string) {
     return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })

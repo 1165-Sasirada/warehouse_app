@@ -128,7 +128,7 @@ SUPABASE_SECRET_KEY=sb_secret_your-key
 
 RLS และ GRANT เป็นคนละชั้น: RLS กำหนดแถวที่มองเห็นหรือแก้ไขได้ ส่วน GRANT อนุญาตให้ role เริ่มทำคำสั่งกับตารางได้
 
-Dashboard ใช้ Supabase Realtime รับ order ใหม่โดยไม่ต้อง refresh ด้วย ให้เปิดตาราง `orders` ใน publication `supabase_realtime` ด้วย หากยังไม่ได้เปิด สามารถรันคำสั่งนี้หนึ่งครั้ง:
+Dashboard และ Order Status ใช้ Supabase Realtime เพื่ออัปเดต order โดยไม่ต้อง refresh ด้วย ให้เปิดตาราง `orders` ใน publication `supabase_realtime` หากยังไม่ได้เปิด สามารถรันคำสั่งนี้หนึ่งครั้ง:
 
 ```sql
 alter publication supabase_realtime add table public.orders;
@@ -242,8 +242,7 @@ python scripts/demo.py
 
 - การรับ order เก่าสุดยังเป็นการอ่านและอัปเดตจาก Dashboard ไม่ใช่ atomic claim; พนักงานหลายคนอาจพยายามรับ order เดียวกัน
 - Dashboard ยังไม่กู้คืน order สถานะ `PICKING` หลัง refresh
-- หน้า Order Status ต้อง reload เองเพื่อดูสถานะใหม่ ยังไม่มี realtime refresh
-- หน้า Stock แสดงครั้งละ 20 แถวและโหลดข้อมูลจาก Supabase เป็นช่วงละ 1,000 แถว; History แสดง 20 orders ต่อหน้า ส่วน Create Order ยังโหลด stock โดยไม่แบ่งหน้า จึงอาจได้รับข้อมูลไม่ครบเมื่อมี stock มากกว่า 1,000 แถว
+- หน้า Stock แสดงครั้งละ 20 แถว; Stock และ Create Order โหลดข้อมูลจาก Supabase เป็นช่วงละ 1,000 แถว ส่วน History และ Order Status แสดง 20 orders ต่อหน้า
 
 ## เอกสารอ้างอิง
 

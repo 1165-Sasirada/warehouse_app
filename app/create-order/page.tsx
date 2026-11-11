@@ -26,6 +26,15 @@ interface BatchStatus {
 }
 
 const EMPTY_LINE: OrderLine = { skuId: '', quantity: 1 }
+const STOCK_PAGE_SIZE = 1000
+
+type StockDataRow = {
+  sku_id: string
+  location_id: string
+  quantity: number
+  sku: { name: string } | null
+  location: { label: string } | null
+}
 
 export default function CreateOrderPage() {
   const [stockOptions, setStockOptions] = useState<StockOption[]>([])
@@ -59,24 +68,32 @@ export default function CreateOrderPage() {
     }
     setUserRole(profile?.role ?? null)
 
-    const { data: stockData, error: stockError } = await supabase
-      .from('stock')
-      .select('sku_id, location_id, quantity, sku:skus(name), location:locations(label)')
-      .gt('quantity', 0)
-      .order('sku_id')
+    const stockRows: StockDataRow[] = []
+    let stockError: string | null = null
+    for (let offset = 0; ; offset += STOCK_PAGE_SIZE) {
+      const { data, error: pageError } = await supabase
+        .from('stock')
+        .select('sku_id, location_id, quantity, sku:skus(name), location:locations(label)')
+        .gt('quantity', 0)
+        .order('sku_id')
+        .order('location_id')
+        .range(offset, offset + STOCK_PAGE_SIZE - 1)
+
+      if (pageError) {
+        stockError = pageError.message
+        break
+      }
+
+      const pageRows = (data ?? []) as unknown as StockDataRow[]
+      stockRows.push(...pageRows)
+      if (pageRows.length < STOCK_PAGE_SIZE) break
+    }
 
     if (stockError) {
-      setError(stockError.message)
+      setError(stockError)
     } else {
-      const rows = (stockData ?? []) as unknown as Array<{
-        sku_id: string
-        location_id: string
-        quantity: number
-        sku: { name: string } | null
-        location: { label: string } | null
-      }>
       const uniqueOptions = new Map<string, StockOption>()
-      for (const row of rows) {
+      for (const row of stockRows) {
         if (!row.sku || !row.location || uniqueOptions.has(row.sku_id)) continue
         uniqueOptions.set(row.sku_id, {
           skuId: row.sku_id,

@@ -57,9 +57,10 @@ export default function WarehouseMap({
         cells.push(
           <g key={`${row}-${col}`}>
             <text
-              x={x + CELL / 2}
-              y={y - 10}
-              textAnchor="middle"
+              x={x - 10}
+              y={y + CELL / 2}
+              textAnchor="end"
+              dominantBaseline="middle"
               className="fill-[#231942]"
               style={{ font: '15px var(--font-body)' }}
             >
@@ -95,7 +96,7 @@ export default function WarehouseMap({
 
   return (
     <svg
-      viewBox={`-4 -14 ${width + 8} ${height + 18}`}
+      viewBox={`-124 -14 ${width + 128} ${height + 18}`}
       className="h-full w-full"
       preserveAspectRatio="xMidYMid meet"
     >
