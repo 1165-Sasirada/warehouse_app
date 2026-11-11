@@ -58,14 +58,14 @@ export default function WarehouseMap({
           <g key={`${row}-${col}`}>
             <text
               x={x + CELL / 2}
-              y={y - 2}
+              y={y - 10}
               textAnchor="middle"
               className="fill-[#231942]"
               style={{ font: '15px var(--font-body)' }}
             >
               Packing Station
             </text>
-            <rect x={x - 6} y={y + 6} width={CELL + 5} height={CELL + 2} rx={1.5} fill="#5e548e" />
+            <rect x={x} y={y} width={CELL} height={CELL} rx={1.5} fill="#5e548e" />
           </g>
         )
         continue
