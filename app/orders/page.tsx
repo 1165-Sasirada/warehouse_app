@@ -86,19 +86,24 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!customerId) return
 
+    const refreshOrders = () => setRealtimeVersion((version) => version + 1)
     const channel = supabase
       .channel(`customer-orders:${customerId}`)
       .on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'orders',
         filter: `customer_id=eq.${customerId}`,
-      }, () => {
-        setRealtimeVersion((version) => version + 1)
-      })
+      }, refreshOrders)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'orders',
+        filter: `customer_id=eq.${customerId}`,
+      }, refreshOrders)
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          setRealtimeVersion((version) => version + 1)
+          refreshOrders()
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.error('Live customer order subscription failed:', status)
         }

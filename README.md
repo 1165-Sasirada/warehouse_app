@@ -122,7 +122,7 @@ SUPABASE_SECRET_KEY=sb_secret_your-key
 5. `supabase/patch-order-ownership.sql`
 6. `supabase/queue-and-picking.sql`
 7. Deploy โค้ดแอปเวอร์ชันที่รองรับ queue และ RPC เหล่านี้
-8. หลัง deploy จึงรัน `supabase/queue-security-hardening.sql`
+8. หลัง deploy โค้ดที่มี `/api/stock/options` แล้ว จึงรัน `supabase/queue-security-hardening.sql` เพื่อปิดการแก้ role ผ่าน browser จำกัดการอ่าน stock ให้ staff จำกัดการ restock ให้ manager และจำกัดการอ่าน order items ตามเจ้าของ order
 
 อย่ารัน `schema.sql` ซ้ำบนฐานข้อมูลเดิม และตรวจสอบ migration ก่อนรัน patch ซ้ำ เพราะบางไฟล์ออกแบบมาสำหรับการตั้งค่าเพียงครั้งเดียว การรัน hardening ก่อน deploy โค้ดที่ตรงกันจะปิดทางเขียน order แบบเดิมก่อนแอปพร้อมใช้งาน
 
@@ -196,7 +196,7 @@ where email = 'customer@example.com';
 | `picker` | Dashboard, Stock, History | `/dashboard` |
 | `manager` | Dashboard, Create Order, Stock, History | `/dashboard` |
 
-เมนูที่ซ่อนไม่ใช่มาตรการความปลอดภัยแทน RLS หรือ API role checks ปัจจุบัน write policies บางส่วน เช่น `Restock All` ยังอนุญาตผู้ใช้ที่ authenticated ไม่ได้จำกัดเฉพาะ manager
+เมนูที่ซ่อนไม่ใช่มาตรการความปลอดภัยแทน RLS หรือ API role checks Create Order โหลดตัวเลือก stock ผ่าน `/api/stock/options` ซึ่งตรวจ session/role ฝั่ง server ส่วน `Restock All` แสดงเฉพาะ manager และต้องใช้ hardening SQL เพื่อบังคับสิทธิ์นี้ที่ฐานข้อมูลด้วย
 
 ## รันและทดสอบในเครื่อง
 

@@ -26,18 +26,18 @@ grant select on
   public.location_heatmaps
 to anon;
 
--- authenticated: same read access as anon, plus read/write on the
--- operational tables (matches the "Authenticated can ..." policies)
+-- authenticated: read catalog and operational data. RLS further limits
+-- stock/order visibility; only staff may update orders and only managers
+-- may update stock. Browser clients do not write users, order_items, or heatmaps.
 grant select on
   public.skus,
   public.locations,
+  public.stock,
+  public.orders,
+  public.order_items,
   public.location_heatmaps
 to authenticated;
 
-grant select, insert, update on
-  public.stock,
-  public.orders,
-  public.order_items
-to authenticated;
+grant update on public.stock, public.orders to authenticated;
 
-grant select, update on public.users to authenticated;
+grant select on public.users to authenticated;

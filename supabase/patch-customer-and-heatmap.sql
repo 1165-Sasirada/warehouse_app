@@ -11,20 +11,15 @@ alter table public.users drop constraint users_role_check;
 alter table public.users
   add constraint users_role_check check (role in ('picker', 'manager', 'customer'));
 
--- 2. Grant UPDATE on location_heatmaps to authenticated — this was
--- missing, which is why heatmap increments would fail even once the
--- app code tries to write them.
-grant update on public.location_heatmaps to authenticated;
-
--- 3. Backfill a heatmap row (pick_count = 0) for every existing
+-- 2. Backfill a heatmap row (pick_count = 0) for every existing
 -- location, so the app only ever needs UPDATE, never INSERT, during
--- normal picking — simpler than also granting + policy-ing INSERT.
+-- normal picking. The atomic pick RPC updates heatmaps server-side.
 insert into public.location_heatmaps (location_id, pick_count)
 select id, 0 from public.locations
 on conflict (location_id) do nothing;
 
 -- ============================================================
--- 4. OPTIONAL but recommended: restrict customers to their own
+-- 3. OPTIONAL but recommended: restrict customers to their own
 -- orders at the database level, not just in the UI query. Without
 -- this, the existing "Authenticated can read orders" policy (using
 -- (true)) still lets a customer query other customers' orders via

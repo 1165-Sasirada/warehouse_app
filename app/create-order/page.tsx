@@ -26,15 +26,6 @@ interface BatchStatus {
 }
 
 const EMPTY_LINE: OrderLine = { skuId: '', quantity: 1 }
-const STOCK_PAGE_SIZE = 1000
-
-type StockDataRow = {
-  sku_id: string
-  location_id: string
-  quantity: number
-  sku: { name: string } | null
-  location: { label: string } | null
-}
 
 export default function CreateOrderPage() {
   const [stockOptions, setStockOptions] = useState<StockOption[]>([])
@@ -68,43 +59,20 @@ export default function CreateOrderPage() {
     }
     setUserRole(profile?.role ?? null)
 
-    const stockRows: StockDataRow[] = []
-    let stockError: string | null = null
-    for (let offset = 0; ; offset += STOCK_PAGE_SIZE) {
-      const { data, error: pageError } = await supabase
-        .from('stock')
-        .select('sku_id, location_id, quantity, sku:skus(name), location:locations(label)')
-        .gt('quantity', 0)
-        .order('sku_id')
-        .order('location_id')
-        .range(offset, offset + STOCK_PAGE_SIZE - 1)
-
-      if (pageError) {
-        stockError = pageError.message
-        break
-      }
-
-      const pageRows = (data ?? []) as unknown as StockDataRow[]
-      stockRows.push(...pageRows)
-      if (pageRows.length < STOCK_PAGE_SIZE) break
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !sessionData.session) {
+      setError('Please sign in first.')
+      setLoading(false)
+      return
     }
 
-    if (stockError) {
-      setError(stockError)
-    } else {
-      const uniqueOptions = new Map<string, StockOption>()
-      for (const row of stockRows) {
-        if (!row.sku || !row.location || uniqueOptions.has(row.sku_id)) continue
-        uniqueOptions.set(row.sku_id, {
-          skuId: row.sku_id,
-          name: row.sku.name,
-          locationId: row.location_id,
-          locationLabel: row.location.label,
-          availableQuantity: row.quantity,
-        })
-      }
-      setStockOptions([...uniqueOptions.values()])
-    }
+    const response = await fetch('/api/stock/options', {
+      headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+      cache: 'no-store',
+    })
+    const result = await response.json() as { stockOptions?: StockOption[]; error?: string }
+    if (!response.ok) setError(result.error ?? 'Unable to load available stock.')
+    else setStockOptions(result.stockOptions ?? [])
     setLoading(false)
   }
 

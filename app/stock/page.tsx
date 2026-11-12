@@ -21,8 +21,10 @@ export default function StockPage() {
   const [rows, setRows] = useState<StockRow[]>([])
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
+  const [userRole, setUserRole] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [restocking, setRestocking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function fetchStock() {
     const allRows: StockRow[] = []
@@ -33,7 +35,10 @@ export default function StockPage() {
         .order('id')
         .range(offset, offset + FETCH_SIZE - 1)
 
-      if (error) break
+      if (error) {
+        setError(error.message)
+        break
+      }
       const batch = (data ?? []) as unknown as StockRow[]
       allRows.push(...batch)
       if (batch.length < FETCH_SIZE) break
@@ -42,13 +47,46 @@ export default function StockPage() {
     setLoading(false)
   }
 
+  async function loadPage() {
+    const { data: authData } = await supabase.auth.getUser()
+    if (!authData.user) {
+      setError('Please sign in to view stock.')
+      setLoading(false)
+      return
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', authData.user.id)
+      .maybeSingle()
+
+    if (profileError) {
+      setError(profileError.message)
+      setLoading(false)
+      return
+    }
+    if (profile?.role !== 'picker' && profile?.role !== 'manager') {
+      setError('Only staff can view stock.')
+      setLoading(false)
+      return
+    }
+
+    setUserRole(profile.role)
+    await fetchStock()
+  }
+
   useEffect(() => {
-    const timer = window.setTimeout(() => void fetchStock(), 0)
+    const timer = window.setTimeout(() => void loadPage(), 0)
     return () => window.clearTimeout(timer)
+    // Load the role and stock once when entering the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleRestockAll() {
+    if (userRole !== 'manager') return
     setRestocking(true)
+    setError(null)
     // .gte('quantity', 0) is always true — Supabase requires a filter on
     // update(), this is the standard way to say "apply to every row."
     const { error } = await supabase
@@ -56,7 +94,8 @@ export default function StockPage() {
       .update({ quantity: RESTOCK_QUANTITY })
       .gte('quantity', 0)
 
-    if (!error) await fetchStock()
+    if (error) setError(error.message)
+    else await fetchStock()
     setRestocking(false)
   }
 
@@ -79,13 +118,15 @@ export default function StockPage() {
           <h1 className="font-[var(--font-title)] text-2xl font-medium text-[#231942]">
             Stock
           </h1>
-          <button
-            onClick={handleRestockAll}
-            disabled={restocking}
-            className="rounded-sm bg-[#231942] px-4 py-2 font-[var(--font-body)] text-sm text-[#e0b1cb] transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {restocking ? 'Restocking…' : 'Restock All'}
-          </button>
+          {userRole === 'manager' && (
+            <button
+              onClick={handleRestockAll}
+              disabled={restocking}
+              className="rounded-sm bg-[#231942] px-4 py-2 font-[var(--font-body)] text-sm text-[#e0b1cb] transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {restocking ? 'Restocking…' : 'Restock All'}
+            </button>
+          )}
         </div>
 
         <input
@@ -117,8 +158,8 @@ export default function StockPage() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-6 text-center text-[#231942]/60">
-                    No matching stock.
+                  <td colSpan={3} className={`px-4 py-6 text-center ${error ? 'text-[#ce4257]' : 'text-[#231942]/60'}`}>
+                    {error ?? 'No matching stock.'}
                   </td>
                 </tr>
               ) : (
