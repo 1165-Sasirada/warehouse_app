@@ -56,7 +56,7 @@ export default function LoginPage() {
       <div className="flex w-1/2 items-center justify-center bg-[#f2e9e4]">
         <form onSubmit={handleSubmit} className="w-full max-w-sm px-8">
           <h1 className="mb-8 font-[var(--font-title)] text-3xl font-medium text-[#231942]">
-            Sign in
+            Sign in**
           </h1>
 
           <label htmlFor="email" className="mb-1 block text-sm text-[#231942]">
